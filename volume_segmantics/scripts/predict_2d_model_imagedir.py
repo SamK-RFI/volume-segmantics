@@ -29,10 +29,18 @@ def main():
     root_path = Path(getattr(args, cfg.DATA_DIR_ARG)).resolve()
     settings_path = Path(root_path, cfg.SETTINGS_DIR, cfg.PREDICTION_SETTINGS_FN)
     model_file_path = getattr(args, cfg.MODEL_PTH_ARG)
+<<<<<<< HEAD
     
     image_dir_path = Path(getattr(args, cfg.PREDICT_DATADIR_ARG))
     output_dir_path = Path(getattr(args, cfg.OUTPUT_DATA_DIR_ARG))
     
+=======
+    #data_vol_path = Path(getattr(args, cfg.PREDICT_DATA_ARG))
+    image_dir_path = Path(getattr(args, cfg.PREDICT_DATADIR_ARG))
+    output_dir_path = Path(getattr(args, cfg.OUTPUT_DATA_DIR_ARG))
+    #output_path = create_output_path(root_path, data_vol_path)
+
+>>>>>>> d43b414 (Allow prediction over a directory of images.)
     # Get settings object
     settings = get_settings_data(settings_path)    
     

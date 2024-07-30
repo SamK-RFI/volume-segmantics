@@ -14,6 +14,7 @@ import volume_segmantics.utilities.base_data_utils as utils
 import volume_segmantics.utilities.config as cfg
 from torch import nn as nn
 from tqdm import tqdm
+
 from monai.inferers import sliding_window_inference
 from volume_segmantics.data.dataloaders import get_2d_prediction_dataloader, get_2d_image_dir_prediction_dataloader
 from volume_segmantics.model.model_2d import create_model_from_file, MultitaskSegmentationModel
@@ -22,7 +23,6 @@ from volume_segmantics.data import get_settings_data
 import logging
 from pathlib import Path
 from types import SimpleNamespace
-
 
 
 class VolSeg2dPredictor:
@@ -708,8 +708,10 @@ class VolSeg2dImageDirPredictor:
         data_loader, images_fps = get_2d_image_dir_prediction_dataloader(image_dir, self.settings)
         self.model.eval()
         logging.info(f"Predicting segmentation for image dir.")
+
         if is_multitask:
             logging.info(f"Multi-task model detected with {self.model.num_heads if hasattr(self.model, 'num_heads') else 'unknown'} heads")
+
         with torch.no_grad():
             for batch in tqdm(
                 data_loader, desc="Prediction batch", bar_format=cfg.TQDM_BAR_FORMAT
@@ -731,6 +733,7 @@ class VolSeg2dImageDirPredictor:
                     probs = torch.squeeze(probs, dim=1)
                     probs = utils.crop_tensor_to_array(probs, yx_dims)
                     output_prob_list.append(probs.astype(np.float16))
+
 
                 if is_multitask and additional_outputs:
                     for task_name, task_output in additional_outputs.items():
