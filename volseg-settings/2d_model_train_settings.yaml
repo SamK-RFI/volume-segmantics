@@ -37,14 +37,15 @@ full_weights_path: False
 model:
   # Choose type of segmentation model from the list of those tested so far
   # ["U_Net", "U_Net_Plus_plus", "FPN", "DeepLabV3", "DeepLabV3_Plus"]
-  # "MA_Net", "Linknet", "PAN"]
-  type: "U_Net"
+  # "MA_Net", "Linknet", "PAN", "Segformer"]
+  type: "U_Net_Plus_plus"
   # For more details on encoder types please see smp.readthedocs.io
   # choose encoder, those tested so far include the following:
   # ["resnet34", "resnet50", "resnext50_32x4d", "efficientnet-b3","efficientnet-b4", "efficientnet-b5", "efficientnet-b7"
   # "timm-resnest50d"*, "timm-resnest101e"*,] *Encoders with asterisk not compatible with PAN.
   #encoder_name: "swin_base_patch4_window12_384"
   #encoder_name: "convnextv2_base"
+  #encoder_name: "convnextv2_large"
   encoder_name: "resnet50"
    # use `imagenet` pre-trained weights for encoder initialization
   encoder_weights: "imagenet"

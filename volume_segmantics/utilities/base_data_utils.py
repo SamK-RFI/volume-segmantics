@@ -49,6 +49,7 @@ class ModelType(Enum):
     MA_NET = 6
     LINKNET = 7
     PAN = 8
+    SEGFORMER = 9
 
 
 def create_enum_from_setting(setting_str, enum):
