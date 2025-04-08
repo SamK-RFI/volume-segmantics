@@ -145,6 +145,77 @@ class VolSeg2dPredictionDataset(BaseDataset):
         return self.data_vol.shape[0]
 
 
+class VolSeg2_5dPredictionDataset(BaseDataset):
+    """Splits 3D data volume into 2D images for inference, creating 2.5D representations
+    with previous, current, and next slices as channels.
+    
+    Args:
+        images_dir (pathlib.Path): path to images folder
+        masks_dir (pathlib.Path): path to segmentation masks folder
+        preprocessing (albumentations.Compose): data pre-processing
+            (e.g. padding, resizing)
+        imagenet_norm (bool): Whether to normalise according to imagenet stats
+        postprocessing (albumentations.Compose): data post-processing
+            (e.g. Convert to Tensor)
+    """
+    imagenet_mean = cfg.IMAGENET_MEAN
+    imagenet_std = cfg.IMAGENET_STD
+    
+    def __init__(
+        self,
+        data_vol,
+        preprocessing=None,
+        imagenet_norm=False,
+        postprocessing=None,
+    ):
+        self.data_vol = data_vol
+        self.preprocessing = preprocessing
+        self.imagenet_norm = imagenet_norm
+        self.postprocessing = postprocessing
+    
+    def __getitem__(self, i):
+        
+        current_slice = self.data_vol[i]
+        
+        # Handle border cases
+        if i == 0:  
+            prev_slice = current_slice  
+        else:
+            prev_slice = self.data_vol[i-1]
+            
+        if i == len(self) - 1:  
+            next_slice = current_slice  
+        else:
+            next_slice = self.data_vol[i+1]
+        
+        
+        three_channel_image = np.stack([prev_slice, current_slice, next_slice], axis=-1)
+        
+        if self.preprocessing:
+            sample = self.preprocessing(image=three_channel_image)
+            three_channel_image = sample["image"]
+        
+        if self.imagenet_norm:
+            if np.issubdtype(three_channel_image.dtype, np.integer):
+                
+                three_channel_image = three_channel_image.astype(np.float32)
+                three_channel_image = three_channel_image / 255
+            
+           
+            three_channel_image = three_channel_image - self.imagenet_mean
+            three_channel_image = three_channel_image / self.imagenet_std
+        
+        
+        if self.postprocessing:
+            sample = self.postprocessing(image=three_channel_image)
+            three_channel_image = sample["image"]
+        
+        return three_channel_image
+    
+    def __len__(self):
+        return self.data_vol.shape[0]
+
+
 class VolSeg2dImageDirDataset(BaseDataset):
     """Read images, apply augmentation and preprocessing transformations.
 
@@ -252,6 +323,14 @@ def get_2d_validation_dataset(
 def get_2d_prediction_dataset(data_vol: np.array) -> VolSeg2dPredictionDataset:
     y_dim, x_dim = data_vol.shape[1:]
     return VolSeg2dPredictionDataset(
+        data_vol,
+        preprocessing=augs.get_pred_preprocess_augs(y_dim, x_dim),
+        postprocessing=augs.get_postprocess_augs(),
+    )
+
+def get_2_5d_prediction_dataset(data_vol: np.array) -> VolSeg2dPredictionDataset:
+    y_dim, x_dim = data_vol.shape[1:]
+    return VolSeg2_5dPredictionDataset(
         data_vol,
         preprocessing=augs.get_pred_preprocess_augs(y_dim, x_dim),
         postprocessing=augs.get_postprocess_augs(),
