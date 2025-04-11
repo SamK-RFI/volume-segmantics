@@ -37,6 +37,7 @@ class VolSeg2dPredictor:
     def _predict_single_axis(self, data_vol, output_probs=True, axis=Axis.Z):
         output_vol_list = []
         output_prob_list = []
+        output_logits_list = []
         data_vol = utils.rotate_array_to_axis(data_vol, axis)
         yx_dims = list(data_vol.shape[1:])
         s_max = nn.Softmax(dim=1)
@@ -63,12 +64,23 @@ class VolSeg2dPredictor:
                     probs = utils.crop_tensor_to_array(probs, yx_dims)
                     output_prob_list.append(probs.astype(np.float16))
 
+                    #logits = torch.squeeze(output, dim=1)
+                    #logits = output[:,0,:]
+                    logits = utils.crop_tensor_to_array(output, yx_dims)
+                    output_logits_list.append(logits)
+
         labels = np.concatenate(output_vol_list)
         labels = utils.rotate_array_to_axis(labels, axis)
         probs = np.concatenate(output_prob_list) if output_prob_list else None
+        logits = np.concatenate(output_logits_list) if output_logits_list else None
+
         if probs is not None:
             probs = utils.rotate_array_to_axis(probs, axis)
-        return labels, probs
+
+        if logits is not None:
+            logits = utils.rotate_array_to_axis(logits, axis)
+
+        return labels, probs, logits
 
     def _predict_3_ways_max_probs(self, data_vol):
         shape_tup = data_vol.shape
@@ -76,17 +88,17 @@ class VolSeg2dPredictor:
         label_container = np.empty((2, *shape_tup), dtype=np.uint8)
         prob_container = np.empty((2, *shape_tup), dtype=np.float16)
         logging.info("Predicting YX slices:")
-        label_container[0], prob_container[0] = self._predict_single_axis(
+        label_container[0], prob_container[0],_ = self._predict_single_axis(
             data_vol, output_probs=True
         )
         logging.info("Predicting ZX slices:")
-        label_container[1], prob_container[1] = self._predict_single_axis(
+        label_container[1], prob_container[1],_ = self._predict_single_axis(
             data_vol, output_probs=True, axis=Axis.Y
         )
         logging.info("Merging XY and ZX volumes.")
         self._merge_vols_in_mem(prob_container, label_container)
         logging.info("Predicting ZY slices:")
-        label_container[1], prob_container[1] = self._predict_single_axis(
+        label_container[1], prob_container[1],_ = self._predict_single_axis(
             data_vol, output_probs=True, axis=Axis.X
         )
         logging.info("Merging max of XY and ZX volumes with ZY volume.")
@@ -140,7 +152,7 @@ class VolSeg2dPredictor:
         return label_container[0], prob_container[0]
 
     def _predict_single_axis_to_one_hot(self, data_vol, axis=Axis.Z):
-        prediction, _ = self._predict_single_axis(data_vol, axis=axis)
+        prediction, _, _ = self._predict_single_axis(data_vol, axis=axis)
         return utils.one_hot_encode_array(prediction, self.num_labels)
 
     def _predict_3_ways_one_hot(self, data_vol):
@@ -313,6 +325,7 @@ class VolSeg2dImageDirPredictor:
 
         return output_vol_list, output_prob_list, images_fps
 
+    # TODO FIX
     def _predict_image_dir_to_one_hot(self, data_vol):
         prediction, _, images_fps = self._predict_single_axis(data_vol)
         return utils.one_hot_encode_array(prediction, self.num_labels), images_fps
