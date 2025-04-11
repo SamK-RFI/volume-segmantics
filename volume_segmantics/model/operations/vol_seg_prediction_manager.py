@@ -61,6 +61,7 @@ class VolSeg2DPredictionManager(BaseDataManager):
             np.ndarray: _description_
         """
         probs = None
+        logits = None
         one_hot = self.settings.one_hot
         preferred_axis = utils.get_prediction_axis(
             self.settings
@@ -73,7 +74,7 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     self.data_vol, axis=preferred_axis
                 )
             else:
-                prediction, probs = self.predictor._predict_single_axis(
+                prediction, probs, logits = self.predictor._predict_single_axis(
                     self.data_vol, axis=preferred_axis
                 )
         if quality == utils.Quality.MEDIUM:
@@ -98,6 +99,12 @@ class VolSeg2DPredictionManager(BaseDataManager):
                 utils.save_data_to_hdf5(
                     probs,
                     f"{output_path.parent / output_path.stem}_probs.h5",
+                    chunking=self.input_data_chunking,
+                )
+            if logits is not None and self.settings.output_probs:
+                utils.save_data_to_hdf5(
+                    logits,
+                    f"{output_path.parent / output_path.stem}_logits.h5",
                     chunking=self.input_data_chunking,
                 )
         return prediction
