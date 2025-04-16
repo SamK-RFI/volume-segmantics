@@ -287,7 +287,7 @@ class VolSeg2dTrainer:
             map_location = f"cuda:{self.model_device_num}"
         else:
             map_location = "cpu"
-        model_dict = torch.load(output_path, map_location=map_location)
+        model_dict = torch.load(output_path, map_location=map_location, weights_only=False)
         logging.info("Loading model weights.")
         self.model.load_state_dict(model_dict["model_state_dict"])
         if optimizer:
@@ -436,7 +436,7 @@ class VolSeg2dTrainer:
         epoch number.
 
         Args:
-            model_out_path (Path): Path to the model output by the trainer. 
+            model_out_path (Path): Path to the model output by the trainer.
         """
 
         fig = plt.figure(figsize=(10, 8))
