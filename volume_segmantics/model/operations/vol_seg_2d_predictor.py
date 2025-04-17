@@ -2,7 +2,10 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 
+from itertools import permutations as perm
+
 import numpy as np
+from scipy.stats import entropy
 import torch
 import volume_segmantics.utilities.base_data_utils as utils
 import volume_segmantics.utilities.config as cfg
@@ -134,3 +137,57 @@ class VolSeg2dPredictor:
                 self._predict_3_ways_one_hot(data_vol), -k, axes=(-3, -2)
             )
         return one_hot_out
+
+    def _predict_3_axis_generator(self, data_vol):
+        for curr_axis in [Axis.Z, Axis.Y, Axis.X]:
+            labels, _ = self._predict_single_axis(data_vol, output_probs=False, axis=curr_axis)
+            yield labels
+
+    def _predict_12_ways_generator(self, data_vol):
+        for curr_axis in [Axis.Z, Axis.Y, Axis.X]:
+            for k in range(4):
+                labels, _ = self._predict_single_axis(np.rot90(data_vol, k), output_probs=False, axis=curr_axis)
+                yield np.rot90(labels, -k)
+
+    def _convert_labels_map_to_count(self, labels_vol):
+        volume_size = labels_vol.shape
+        num_labels = len(np.unique(labels_vol))
+
+        counts_matrix = np.zeros((num_labels, *volume_size), dtype=np.uint8)
+        for curr_label in range(num_labels):
+            np.put(counts_matrix[curr_label],
+                   np.argwhere(labels_vol.flatten()==curr_label),
+                   1)
+
+        return counts_matrix
+
+    def _prediction_estimate_entropy(self, data_vol):
+        if (self.settings.quality not in ["medium", "high"]):
+            raise ValueError("Error in vol_seg_2d_predictor._prediction_estimate_entropy: Entropy calculation must be done with a minimum prediction quality of medium.")
+
+        if self.settings.quality=="medium":
+            full_prediction_labels, _ = self._predict_3_ways_max_probs(data_vol)
+
+            logging.info("Estimating prediction entropy:")
+            g = self._predict_3_axis_generator(data_vol)
+            labels = next(g)
+            counts_matrix = self._convert_labels_map_to_count(labels)
+            for _ in range(2):
+                labels = next(g)
+                counts_matrix += self._convert_labels_map_to_count(labels)
+            probs_matrix = counts_matrix.astype(float) / 3
+
+        else:
+            full_prediction_labels, _ = self._predict_12_ways_max_probs(data_vol)
+            g = self._predict_12_ways_generator(data_vol)
+
+            labels = next(g)
+            counts_matrix = self._convert_labels_map_to_count(labels)
+            for _ in range(11):
+                labels = next(g)
+                counts_matrix += self._convert_labels_map_to_count(labels)
+            probs_matrix = counts_matrix.astype(float) / 12
+
+        entropy_matrix = entropy(probs_matrix, axis=0)
+
+        return full_prediction_labels, entropy_matrix

@@ -59,6 +59,8 @@ class VolSeg2DPredictionManager(BaseDataManager):
         """
         probs = None
         one_hot = self.settings.one_hot
+        output_probs = self.settings.output_probs
+        output_entropy = self.settings.output_entropy
         preferred_axis = utils.get_prediction_axis(
             self.settings
         )  # Specify single axis for prediction
@@ -76,17 +78,27 @@ class VolSeg2DPredictionManager(BaseDataManager):
         if quality == utils.Quality.MEDIUM:
             if one_hot:
                 prediction = self.predictor._predict_3_ways_one_hot(self.data_vol)
-            else:
+            elif output_probs:
                 prediction, probs = self.predictor._predict_3_ways_max_probs(
                     self.data_vol
                 )
+            elif output_entropy:
+                prediction, entropy = self.predictor._prediction_estimate_entropy(
+                    self.data_vol
+                )
+
         if quality == utils.Quality.HIGH:
             if one_hot:
                 prediction = self.predictor._predict_12_ways_one_hot(self.data_vol)
-            else:
+            elif output_probs:
                 prediction, probs = self.predictor._predict_12_ways_max_probs(
                     self.data_vol
                 )
+            elif output_entropy:
+                prediction, entropy = self.predictor._prediction_estimate_entropy(
+                    self.data_vol
+                )
+
         if output_path is not None:
             utils.save_data_to_hdf5(
                 prediction, output_path, chunking=self.input_data_chunking
@@ -95,6 +107,12 @@ class VolSeg2DPredictionManager(BaseDataManager):
                 utils.save_data_to_hdf5(
                     probs,
                     f"{output_path.parent / output_path.stem}_probs.h5",
+                    chunking=self.input_data_chunking,
+                )
+            if entropy is not None and self.settings.output_entropy:
+                utils.save_data_to_hdf5(
+                    entropy,
+                    f"{output_path.parent / output_path.stem}_entropy.h5",
                     chunking=self.input_data_chunking,
                 )
         return prediction
