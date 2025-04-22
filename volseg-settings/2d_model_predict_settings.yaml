@@ -1,7 +1,7 @@
 # Settings for prediction of a 3d volume using a 2d model
 quality: medium # One of [low, medium, high]. low = Single axis, medium = 3 axis, high = 12 ways
 output_probs: False # If set to True a separate volume of probabilty values for the predictions will be saved alongside the labels.
-output_entropy: True # If set to True a separate volume of entropy values for the predictions will be saved alongside the labels. Only works if quality is set to medium or above. This option is exclusive to output_probs: if this option is set to True, output_probs will be overridden and switched to False.
+output_entropy: True # If set to True a separate volume of entropy values for the predictions will be saved alongside the labels. Only works if quality is set to medium or above. 
 clip_data: True # If set to True, the image data intensities will be clipped and rescaled before prediction. Set to False if data is already clipped.
 st_dev_factor: 2.575 # Number of standard deviations from the mean to clip data to.
 data_hdf5_path: /data # Internal path in the HDF5 file where the image data for prediction is stored.

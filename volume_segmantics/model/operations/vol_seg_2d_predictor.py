@@ -165,10 +165,8 @@ class VolSeg2dPredictor:
         if (self.settings.quality not in ["medium", "high"]):
             raise ValueError("Error in vol_seg_2d_predictor._prediction_estimate_entropy: Entropy calculation must be done with a minimum prediction quality of medium.")
 
+        logging.info("Collecting voting distributions:")
         if self.settings.quality=="medium":
-            full_prediction_labels, _ = self._predict_3_ways_max_probs(data_vol)
-
-            logging.info("Estimating prediction entropy:")
             g = self._predict_3_axis_generator(data_vol)
             labels = next(g)
             counts_matrix = self._convert_labels_map_to_count(labels)
@@ -178,7 +176,6 @@ class VolSeg2dPredictor:
             probs_matrix = counts_matrix.astype(float) / 3
 
         else:
-            full_prediction_labels, _ = self._predict_12_ways_max_probs(data_vol)
             g = self._predict_12_ways_generator(data_vol)
 
             labels = next(g)
@@ -188,6 +185,15 @@ class VolSeg2dPredictor:
                 counts_matrix += self._convert_labels_map_to_count(labels)
             probs_matrix = counts_matrix.astype(float) / 12
 
-        entropy_matrix = entropy(probs_matrix, axis=0)
+        logging.info("Aggregating prediction votes:")
+        full_prediction_labels = np.argmax(counts_matrix, axis=0)
+        full_prediction_probs = np.squeeze(
+            np.take_along_axis(probs_matrix, full_prediction_labels[np.newaxis, ...], axis=0)
+        )
 
-        return full_prediction_labels, entropy_matrix
+        logging.info("Calculating prediction entropy (regularised) from voting distributions:")
+        entropy_matrix = entropy(probs_matrix, axis=0)
+        entropy_matrix /= entropy(np.full((len(np.unique(full_prediction_labels)),),
+                                          1/len(np.unique(full_prediction_labels))))
+
+        return full_prediction_labels, full_prediction_probs, entropy_matrix
