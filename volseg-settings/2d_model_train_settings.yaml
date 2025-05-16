@@ -9,7 +9,7 @@ seg_hdf5_path: /data # The internal HDF5 path to the label data
 
 # Settings for model training
 training_axes: All # Specify axes/single axis to train on. Choose from [All, Z, X, Y]. 
-image_size: 1024 # size of images used for training (must be multiple of 32)
+image_size: 512 # size of images used for training (must be multiple of 32)
 downsample: False # If True, data will be downsampled by 2
 training_set_proportion: 0.85 # Proportion of images to use the training, rest are used for validation
 cuda_device: 0 # The graphics card to use (between 0 and 3 for a machine with 4 GPUs)
@@ -38,15 +38,13 @@ model:
   # Choose type of segmentation model from the list of those tested so far
   # ["U_Net", "U_Net_Plus_plus", "FPN", "DeepLabV3", "DeepLabV3_Plus"]
   # "MA_Net", "Linknet", "PAN", "Segformer"]
-  type: "U_Net_Plus_plus"
+  type: "U_Net"
   # For more details on encoder types please see smp.readthedocs.io
   # choose encoder, those tested so far include the following:
-  # ["resnet34", "resnet50", "resnext50_32x4d", "efficientnet-b3","efficientnet-b4", "efficientnet-b5", "efficientnet-b7"
+  # ["resnet34", "resnet50", "tu-convnextv2_base", "tu-convnextv2_large", "tu_convnext_base", "tu_convnext_large"
+  # "resnext50_32x4d", "efficientnet-b3","efficientnet-b4", "efficientnet-b5", "efficientnet-b7"
   # "timm-resnest50d"*, "timm-resnest101e"*,] *Encoders with asterisk not compatible with PAN.
-  #encoder_name: "swin_base_patch4_window12_384"
-  #encoder_name: "convnextv2_base"
-  #encoder_name: "convnextv2_large"
-  encoder_name: "resnet50"
+  encoder_name: "tu-convnextv2_base"
    # use `imagenet` pre-trained weights for encoder initialization
   encoder_weights: "imagenet"
   
