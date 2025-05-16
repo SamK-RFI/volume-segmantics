@@ -27,7 +27,6 @@ from volume_segmantics.data.pytorch3dunet_losses import (
     BoundaryDoULossV2,
     TverskyLoss,
     BoundaryLoss,
-    #FastSurfaceDiceLoss,
     BoundaryDoUDiceLoss
 )
 from volume_segmantics.data.pytorch3dunet_metrics import (
@@ -162,7 +161,7 @@ class VolSeg2dTrainer:
         model = models.resnet50(pretrained=True)
         logging.info(f"Loading in the saved weights from path: {weights_fname}")
            
-        checkpoint = torch.load(weights_fname, map_location=map_location)
+        checkpoint = torch.load(weights_fname, map_location=map_location, weights_only=False)
         model.load_state_dict(checkpoint, strict=False)
         
         new_in_channels = 1
@@ -415,7 +414,7 @@ class VolSeg2dTrainer:
             map_location = f"cuda:{self.model_device_num}"
         else:
             map_location = "cpu"
-        model_dict = torch.load(output_path, map_location=map_location)
+        model_dict = torch.load(output_path, map_location=map_location, weights_only=False)
         logging.info("Loading model weights.")
         self.model.load_state_dict(model_dict["model_state_dict"])
         if optimizer:
