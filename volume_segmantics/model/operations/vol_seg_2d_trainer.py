@@ -234,9 +234,6 @@ class VolSeg2dTrainer:
         elif self.settings.loss_criterion == "BoundaryLoss":
             logging.info("Using BoundaryLoss")
             loss_criterion = BoundaryLoss()
-        #elif self.settings.loss_criterion == "FastSurfaceDiceLoss":
-        #    logging.info("Using FastSurfaceDiceLoss")
-        #    loss_criterion = FastSurfaceDiceLoss()
         else:
             logging.error("No loss criterion specified, exiting")
             sys.exit(1)

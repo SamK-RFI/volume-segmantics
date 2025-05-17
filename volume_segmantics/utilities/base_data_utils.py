@@ -106,7 +106,7 @@ def setup_path_if_exists(input_param):
 
 
 def get_batch_size(settings: SimpleNamespace, prediction: bool = False) -> int:
-
+    
     cuda_device_num = settings.cuda_device
     total_gpu_mem = torch.cuda.get_device_properties(cuda_device_num).total_memory
     allocated_gpu_mem = torch.cuda.memory_allocated(cuda_device_num)
@@ -119,10 +119,15 @@ def get_batch_size(settings: SimpleNamespace, prediction: bool = False) -> int:
     else:
         batch_size = cfg.BIG_CUDA_PRED_BATCH
 
+    
+    if torch.cuda.device_count() > 1:
+        batch_size *= torch.cuda.device_count()
+
     logging.info(
-        f"Free GPU memory is {free_gpu_mem:0.2f} GB. Batch size will be "
+        f"Free GPU memory is {free_gpu_mem:0.2f} GB. Number of GPUs: {torch.cuda.device_count()}. Batch size will be "
         f"{batch_size}."
     )
+
     return batch_size
 
 

@@ -30,11 +30,11 @@ TQDM_BAR_FORMAT = "{l_bar}{bar: 30}{r_bar}{bar: -30b}"  # tqdm progress bar form
 
 HDF5_COMPRESSION = "gzip"
 
-BIG_CUDA_THRESHOLD = 8 # GPU Memory (GB), above this value batch size is increased
-BIG_CUDA_TRAIN_BATCH = 12 # Size of training batch on big GPU
+BIG_CUDA_THRESHOLD = 16 # GPU Memory (GB), above this value batch size is increased
+BIG_CUDA_TRAIN_BATCH = 24 # Size of training batch on big GPU
 BIG_CUDA_PRED_BATCH = 4 # Size of prediction batch on big GPU
-SMALL_CUDA_BATCH = 2 # Size of batch on small GPU
-NUM_WORKERS = 4 # Number of parallel workers for training/validation dataloaders
+SMALL_CUDA_BATCH = 8 # Size of batch on small GPU
+NUM_WORKERS = 8 # Number of parallel workers for training/validation dataloaders
 PIN_CUDA_MEMORY = True # Whether to pin CUDA memory for faster data transfer
 IM_SIZE_DIVISOR = 32 # Image dimensions need to be a multiple of this value
 MODEL_INPUT_CHANNELS = 1 # Use 1 for grayscale input images 

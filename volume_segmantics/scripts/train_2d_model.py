@@ -12,7 +12,9 @@ from volume_segmantics.model import VolSeg2dTrainer
 from volume_segmantics.utilities import get_2d_training_parser
 
 import torch
-
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+    
 def main():
     logging.basicConfig(
         level=logging.INFO, format=cfg.LOGGING_FMT, datefmt=cfg.LOGGING_DATE_FMT
