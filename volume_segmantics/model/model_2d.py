@@ -4,12 +4,10 @@ from typing import Tuple
 
 import segmentation_models_pytorch as smp
 
-#print(smp.list_encoders())
-
 import torch
 import torch.nn as nn
 import volume_segmantics.utilities.base_data_utils as utils
-
+from torch.nn import DataParallel
 
 def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.Module:
     struct_dict_copy = model_struc_dict.copy()
@@ -25,7 +23,6 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
             model = smp.Unet(**struct_dict_copy, encoder_depth=4,
                 decoder_channels=(256, 128, 64, 32),
                 head_upsampling=2,)
-                #encoder_params={"img_size": 704}
         else:
             model = smp.Unet(**struct_dict_copy)
         logging.info(f"Sending the U-Net model to device {device_num}")
@@ -58,7 +55,14 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
     elif model_type == utils.ModelType.SEGFORMER:
         model = smp.Segformer(**struct_dict_copy)
         logging.info(f"Sending the Segformer model to device {device_num}")
-    return model.to(device_num)
+
+    if torch.cuda.device_count() > 1:
+        logging.info(f"Using {torch.cuda.device_count()} GPUs.")
+        model = DataParallel(model)
+        model.to("cuda")
+    else:
+        model.to(device_num)
+    return model
 
 
 def create_model_from_file(
@@ -92,18 +96,6 @@ def create_model_from_file2(
     logging.info("Loading model dictionary from file.")
 
     model = create_model_on_device(device_num, model_struc_dict)
-    # import segmentation_models_pytorch as smp
-    # model = smp.Unet(encoder_name="resnet50", encoder_weights="imagenet")
-    
-    # new_in_channels = 1
-    # default_in_channels=3    
-    # for module in model.modules():
-    #     if isinstance(module, nn.Conv2d) and module.in_channels == default_in_channels:
-    #         break
-    # weight = module.weight.detach()
-    # module.in_channels = new_in_channels
-    # new_weight = weight.sum(1, keepdim=True)
-    # module.weight = nn.parameter.Parameter(new_weight)
     
     model_dict = torch.load(weights_fn, map_location=map_location)
     
