@@ -76,7 +76,7 @@ def create_model_from_file(
         map_location = "cpu"
     weights_fn = weights_fn.resolve()
     logging.info("Loading model dictionary from file.")
-    model_dict = torch.load(weights_fn, map_location=map_location, weights_only, weights_only=False)
+    model_dict = torch.load(weights_fn, map_location=map_location, weights_only=False)
     model = create_model_on_device(device_num, model_dict["model_struc_dict"])
     logging.info("Loading in the saved weights.")
     model.load_state_dict(model_dict["model_state_dict"])
