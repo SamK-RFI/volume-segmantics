@@ -12,7 +12,7 @@ from torch.nn import DataParallel
 def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.Module:
     struct_dict_copy = model_struc_dict.copy()
     model_type = struct_dict_copy.pop("type")
-
+    
     if model_type == utils.ModelType.U_NET:
 
         if struct_dict_copy['encoder_name'] == 'efficientnet-b5':
@@ -76,7 +76,7 @@ def create_model_from_file(
         map_location = "cpu"
     weights_fn = weights_fn.resolve()
     logging.info("Loading model dictionary from file.")
-    model_dict = torch.load(weights_fn, map_location=map_location, weights_only=False)
+    model_dict = torch.load(weights_fn, map_location=map_location, weights_only, weights_only=False)
     model = create_model_on_device(device_num, model_dict["model_struc_dict"])
     logging.info("Loading in the saved weights.")
     model.load_state_dict(model_dict["model_state_dict"])
@@ -97,7 +97,7 @@ def create_model_from_file2(
 
     model = create_model_on_device(device_num, model_struc_dict)
     
-    model_dict = torch.load(weights_fn, map_location=map_location)
+    model_dict = torch.load(weights_fn, map_location=map_location, weights_only=False)
     
     logging.info("Loading in the saved weights.")
     model.load_state_dict(model_dict, strict=False)
