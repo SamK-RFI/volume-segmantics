@@ -12,11 +12,11 @@ This work utilises the abilities afforded by the excellent [segmentation-models-
 
 ## Requirements
 
-A machine capable of running CUDA enabled PyTorch version 1.7.1 or greater is required. This generally means a reasonably modern NVIDIA GPU. The exact requirements differ according to operating system. For example on Windows you will need Visual Studio Build Tools as well as CUDA Toolkit installed see [the CUDA docs](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html) for more details. 
+A machine capable of running CUDA enabled PyTorch version 2.0 or greater is required. This generally means a reasonably modern NVIDIA GPU. The exact requirements differ according to operating system. For example on Windows you will need Visual Studio Build Tools as well as CUDA Toolkit installed see [the CUDA docs](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html) for more details. 
 
 ## Installation
 
-The easiest way to install the package is to first create a new conda environment or virtualenv with python (ideally >= version 3.8) and also pip, then activate the environment and `pip install volume-segmantics`. If a CUDA-enabled build of PyTorch is not being installed by pip, you can try `pip install volume-segmantics --extra-index-url https://download.pytorch.org/whl` this particularity seems to be an issue on Windows. 
+The easiest way to install the package is to first create a new conda environment or virtualenv with python (ideally >= version 3.9) and also pip, then activate the environment and `pip install volume-segmantics`. If a CUDA-enabled build of PyTorch is not being installed by pip, you can try `pip install volume-segmantics --extra-index-url https://download.pytorch.org/whl` this particularity seems to be an issue on Windows. 
 
 ## Configuration and command line use
 
@@ -59,6 +59,7 @@ The model architectures which are currently available and tested are:
 - MA-Net
 - LinkNet
 - PAN
+- SegFormer
 
 The pre-trained encoders that can be used with these architectures are: 
 - ResNet-34
@@ -68,6 +69,8 @@ The pre-trained encoders that can be used with these architectures are:
 - Efficientnet-b4
 - Resnest50d\*
 - Resnest101e\*
+- ConvNext
+- ConvNextV2
 
 \* Encoders with asterisk not compatible with PAN.
 
