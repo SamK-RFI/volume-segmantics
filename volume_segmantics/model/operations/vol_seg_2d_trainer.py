@@ -280,7 +280,7 @@ class VolSeg2dTrainer:
             if self.full_weights_path:
                 print("Loading pretrained weights for encoder and decoder for lr finder.")
                 # load model weights from file
-                model_tuple = create_model_from_file2(self.full_weights_path, self.model_struc_dict, self.model_device_num)
+                model_tuple = create_model_from_file2(self.full_weights_path, self.model_struc_dict, device_num=self.model_device_num)
                 self.model, self.num_labels, self.label_codes = model_tuple
             
             if self.encoder_weights_path:
@@ -298,7 +298,7 @@ class VolSeg2dTrainer:
             if self.full_weights_path:
                 print("Loading pretrained weights for encoder and decoder.")
                 # load model weights from file
-                model_tuple = create_model_from_file2(self.full_weights_path,  self.model_struc_dict, self.model_device_num)
+                model_tuple = create_model_from_file2(self.full_weights_path,  self.model_struc_dict, device_num=self.model_device_num)
                 self.model, self.num_labels, self.label_codes = model_tuple
 
             if self.encoder_weights_path:

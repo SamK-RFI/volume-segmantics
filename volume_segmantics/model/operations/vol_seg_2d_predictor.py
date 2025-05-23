@@ -21,7 +21,7 @@ class VolSeg2dPredictor:
         self.settings = settings
         self.model_device_num = int(settings.cuda_device)
         model_tuple = create_model_from_file(
-            self.model_file_path, self.model_device_num
+            self.model_file_path, device_num=self.model_device_num
         )
         self.model, self.num_labels, self.label_codes = model_tuple
 
@@ -158,7 +158,7 @@ class VolSeg2dImageDirPredictor:
         self.settings = settings
         self.model_device_num = int(settings.cuda_device)
         model_tuple = create_model_from_file(
-            self.model_file_path, self.model_device_num
+            self.model_file_path, device_num=self.model_device_num
         )
         self.model, self.num_labels, self.label_codes = model_tuple
 

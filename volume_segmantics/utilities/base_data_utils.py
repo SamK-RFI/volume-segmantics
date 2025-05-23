@@ -119,12 +119,14 @@ def get_batch_size(settings: SimpleNamespace, prediction: bool = False) -> int:
         batch_size = cfg.BIG_CUDA_PRED_BATCH
 
     
-    if torch.cuda.device_count() > 1:
+    if torch.cuda.device_count() > 1 and cfg.USE_ALL_GPUS:
         batch_size *= torch.cuda.device_count()
 
     logging.info(
-        f"Free GPU memory is {free_gpu_mem:0.2f} GB. Number of GPUs: {torch.cuda.device_count()}. Batch size will be "
-        f"{batch_size}."
+        f"Free GPU memory is {free_gpu_mem:0.2f} GB. "
+        f"Number of GPUs: {torch.cuda.device_count()}. "
+        f"Use all GPUs via DataParallel {cfg.USE_ALL_GPUS}. "    
+        f"Batch size will be {batch_size}."
     )
 
     return batch_size
