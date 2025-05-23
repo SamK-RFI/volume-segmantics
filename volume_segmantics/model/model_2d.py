@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import volume_segmantics.utilities.base_data_utils as utils
 from torch.nn import DataParallel
+import volume_segmantics.utilities.config as cfg
 
 def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.Module:
     struct_dict_copy = model_struc_dict.copy()
@@ -56,7 +57,7 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
         model = smp.Segformer(**struct_dict_copy)
         logging.info(f"Sending the Segformer model to device {device_num}")
 
-    if torch.cuda.device_count() > 1:
+    if torch.cuda.device_count() > 1 and cfg.USE_ALL_GPUS:
         logging.info(f"Using {torch.cuda.device_count()} GPUs.")
         model = DataParallel(model)
         model.to("cuda")
@@ -84,7 +85,7 @@ def create_model_from_file(
 
 
 def create_model_from_file2(
-    weights_fn: Path, model_struc_dict : dict, device_num: int = 0, gpu: bool = True, 
+    weights_fn: Path, model_struc_dict : dict, device_num: int = 0, gpu: bool = True,
 ) -> Tuple[torch.nn.Module, int, dict]:
     """Creates and returns a model and the number of segmentation labels
     that are predicted by the model."""
