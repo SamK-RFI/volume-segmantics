@@ -6,6 +6,8 @@ from itertools import permutations as perm
 
 import numpy as np
 from scipy.stats import entropy
+import sparse
+
 import torch
 import volume_segmantics.utilities.base_data_utils as utils
 import volume_segmantics.utilities.config as cfg
@@ -515,53 +517,70 @@ class VolSeg2dPredictor:
     def _predict_12_ways_generator(self, data_vol):
         for curr_axis in [Axis.Z, Axis.Y, Axis.X]:
             for k in range(4):
-                labels, _ = self._predict_single_axis(np.rot90(data_vol, k), output_probs=False, axis=curr_axis)
+                labels, probs = self._predict_single_axis(np.rot90(data_vol, k), output_probs=False, axis=curr_axis)
                 yield np.rot90(labels, -k)
 
     def _convert_labels_map_to_count(self, labels_vol):
         volume_size = labels_vol.shape
-        num_labels = len(np.unique(labels_vol))
+        logging.info(f"Label volume shape = {volume_size}")
 
-        counts_matrix = np.zeros((num_labels, *volume_size), dtype=np.uint8)
-        for curr_label in range(num_labels):
-            np.put(counts_matrix[curr_label],
-                   np.argwhere(labels_vol.flatten()==curr_label),
+        label_unique, label_counts = np.unique(labels_vol, return_counts=True)
+        label_sorted = label_unique[np.argsort(label_counts)]
+        logging.info(f"Unique labels: {label_sorted}")
+        logging.info(f"Label counts: {np.sort(label_counts)}")
+
+        label_flattened = labels_vol.flatten()
+        counts_matrix = np.zeros((len(label_sorted), *volume_size), dtype=np.uint8)
+        for idx, curr_label in tqdm(enumerate(label_sorted[:-1]), total=len(label_sorted[:-1])):
+            np.put(counts_matrix[idx],
+                   np.argwhere(label_flattened==curr_label),
                    1)
+        counts_matrix[-1] = 1 - np.any(counts_matrix, axis=0)
 
-        return counts_matrix
+        return counts_matrix, label_sorted
 
     def _prediction_estimate_entropy(self, data_vol):
         if (self.settings.quality not in ["medium", "high"]):
             raise ValueError("Error in vol_seg_2d_predictor._prediction_estimate_entropy: Entropy calculation must be done with a minimum prediction quality of medium.")
 
         logging.info("Collecting voting distributions:")
+        probs_matrix = np.zeros((self.num_labels, *data_vol.shape), dtype=np.uint8)
         if self.settings.quality=="medium":
-            g = self._predict_3_axis_generator(data_vol)
-            labels = next(g)
-            counts_matrix = self._convert_labels_map_to_count(labels)
-            for _ in range(2):
+            g = self._predict_3_ways_generator(data_vol)
+            curr_counts, labels_list = self._convert_labels_map_to_count(labels)
+            for i in range(1, 4):
+                logging.info(f"Voter {i} of 3 voting...")
                 labels = next(g)
-                counts_matrix += self._convert_labels_map_to_count(labels)
-            probs_matrix = counts_matrix.astype(float) / 3
+                logging.info(f"Converting votes...")
+                curr_counts, labels_list = self._convert_labels_map_to_count(labels)
+                for idx, curr_label in enumerate(curr_counts):
+                    probs_matrix[labels_list[idx]] += curr_label
 
         else:
             g = self._predict_12_ways_generator(data_vol)
-
-            labels = next(g)
-            counts_matrix = self._convert_labels_map_to_count(labels)
-            for _ in range(11):
+            for i in range(1, 13):
+                logging.info(f"Voter {i} of 12 voting...")
                 labels = next(g)
-                counts_matrix += self._convert_labels_map_to_count(labels)
-            probs_matrix = counts_matrix.astype(float) / 12
+                logging.info(f"Converting votes...")
+                curr_counts, labels_list = self._convert_labels_map_to_count(labels)
+                for idx, curr_label in enumerate(curr_counts):
+                    probs_matrix[labels_list[idx]] += curr_label
 
         logging.info("Aggregating prediction votes:")
-        full_prediction_labels = np.argmax(counts_matrix, axis=0)
+        full_prediction_labels = np.argmax(probs_matrix, axis=0)
         full_prediction_probs = np.squeeze(
             np.take_along_axis(probs_matrix, full_prediction_labels[np.newaxis, ...], axis=0)
         )
 
+        if self.settings.quality=="medium":
+            full_prediction_probs = full_prediction_probs.astype(float) / 3
+        else:
+            full_prediction_probs = full_prediction_probs.astype(float) / 12
+
         logging.info("Calculating prediction entropy (regularised) from voting distributions:")
-        entropy_matrix = entropy(probs_matrix, axis=0)
+        entropy_matrix = np.empty(data_vol.shape)
+        for curr_slice in range(len(data_vol)):
+            entropy_matrix[curr_slice] = entropy(probs_matrix[:, curr_slice, ...], axis=0)
         entropy_matrix /= entropy(np.full((len(np.unique(full_prediction_labels)),),
                                           1/len(np.unique(full_prediction_labels))))
 
