@@ -108,6 +108,22 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     self.data_vol
                 )
 
+        if quality == utils.Quality.Z_ONLY:
+            if one_hot:
+                raise NotImplementedError("One hot for Z-ONLY not implemented.")
+            elif output_probs and not output_entropy:
+                prediction, probs = self.predictor._predict_12_ways_max_probs(
+                    self.data_vol
+                )
+            elif output_entropy and not output_probs:
+                prediction, _, entropy = self.predictor._prediction_estimate_entropy(
+                    self.data_vol
+                )
+            elif output_entropy and output_probs:
+                prediction, probs, entropy = self.predictor._prediction_estimate_entropy(
+                    self.data_vol
+                )
+
         if output_path is not None:
             utils.save_data_to_hdf5(
                 prediction, output_path, chunking=self.input_data_chunking
