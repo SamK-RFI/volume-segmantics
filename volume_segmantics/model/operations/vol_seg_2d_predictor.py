@@ -490,6 +490,24 @@ class VolSeg2dPredictor:
 
         return label_container[0], prob_container[0]
 
+    def _predict_Zonly_max_probs(self, data_vol):
+        shape_tup = data_vol.shape
+        logging.info("Creating empty data volumes in RAM to combine 12 way prediction.")
+        label_container = np.empty((2, *shape_tup), dtype=np.uint8)
+        prob_container = np.empty((2, *shape_tup), dtype=np.float16)
+        label_container[0], prob_container[0] = self._predict_single_axis(data_vol)
+        for k in range(1, 4):
+            logging.info(f"Rotating volume {k * 90} degrees")
+            data_vol = np.rot90(data_vol)
+            labels, probs = self._predict_single_axis(data_vol)
+            label_container[1] = np.rot90(labels, -k)
+            prob_container[1] = np.rot90(probs, -k)
+            logging.info(
+                f"Merging rot {k * 90} deg volume with rot {(k-1) * 90} deg volume."
+            )
+            self._merge_vols_in_mem(prob_container, label_container)
+        return label_container[0], prob_container[0]
+
     def _predict_single_axis_to_one_hot(self, data_vol, axis=Axis.Z):
         prediction, _, _ = self._predict_single_axis(data_vol, axis=axis)
         return utils.one_hot_encode_array(prediction, self.num_labels)
@@ -521,6 +539,11 @@ class VolSeg2dPredictor:
                 labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k)), output_probs=False, axis=curr_axis)
                 yield np.rot90(labels, -k)
 
+    def _predict_Zonly_generator(self, data_vol):
+        for k in range(4):
+            labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k)), output_probs=False, axis=Axis.Z)
+            yield np.rot90(labels, -k)
+
     def _convert_labels_map_to_count(self, labels_vol):
         volume_size = labels_vol.shape
         logging.info(f"Label volume shape = {volume_size}")
@@ -544,7 +567,7 @@ class VolSeg2dPredictor:
         return counts_matrix, label_sorted
 
     def _prediction_estimate_entropy(self, data_vol):
-        if (self.settings.quality not in ["medium", "high"]):
+        if (self.settings.quality not in ["medium", "high", "z_only"]):
             raise ValueError("Error in vol_seg_2d_predictor._prediction_estimate_entropy: Entropy calculation must be done with a minimum prediction quality of medium.")
 
         logging.info("Collecting voting distributions:")
@@ -552,18 +575,28 @@ class VolSeg2dPredictor:
         if self.settings.quality=="medium":
             g = self._predict_3_ways_generator(data_vol)
             curr_counts, labels_list = self._convert_labels_map_to_count(data_vol)
-            for i in range(1, 4):
-                logging.info(f"Voter {i} of 3 voting...")
+            for i in range(3):
+                logging.info(f"Voter {i+1} of 3 voting...")
                 labels = next(g)
                 logging.info(f"Converting votes...")
                 curr_counts, labels_list = self._convert_labels_map_to_count(labels)
                 for idx, curr_label in enumerate(curr_counts):
                     probs_matrix[labels_list[idx]] += curr_label
 
-        else:
+        elif self.settings.quality=="medium":
             g = self._predict_12_ways_generator(data_vol)
-            for i in range(1, 13):
-                logging.info(f"Voter {i} of 12 voting...")
+            for i in range(12):
+                logging.info(f"Voter {i+1} of 12 voting...")
+                labels = next(g)
+                logging.info(f"Converting votes...")
+                curr_counts, labels_list = self._convert_labels_map_to_count(labels)
+                for idx, curr_label in enumerate(curr_counts):
+                    probs_matrix[labels_list[idx]] += curr_label
+
+        elif self.settings.quality=="z_only":
+            g = self._predict_Zonly_generator(data_vol)
+            for i in range(4):
+                logging.info(f"Voter {i+1} of 4 voting...")
                 labels = next(g)
                 logging.info(f"Converting votes...")
                 curr_counts, labels_list = self._convert_labels_map_to_count(labels)

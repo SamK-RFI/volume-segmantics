@@ -32,6 +32,7 @@ class Quality(Enum):
     LOW = 1
     MEDIUM = 3
     HIGH = 12
+    Z_ONLY = 4
 
 
 class Axis(Enum):
