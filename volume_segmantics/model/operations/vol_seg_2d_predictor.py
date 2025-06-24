@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from types import SimpleNamespace
+from collections import Counter
 
 from itertools import permutations as perm
 
@@ -517,17 +518,20 @@ class VolSeg2dPredictor:
     def _predict_12_ways_generator(self, data_vol):
         for curr_axis in [Axis.Z, Axis.Y, Axis.X]:
             for k in range(4):
-                labels, probs = self._predict_single_axis(np.rot90(data_vol, k), output_probs=False, axis=curr_axis)
+                labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k)), output_probs=False, axis=curr_axis)
                 yield np.rot90(labels, -k)
 
     def _convert_labels_map_to_count(self, labels_vol):
         volume_size = labels_vol.shape
         logging.info(f"Label volume shape = {volume_size}")
 
-        label_unique, label_counts = np.unique(labels_vol, return_counts=True)
-        label_sorted = label_unique[np.argsort(label_counts)]
+        label_vol_contig = np.ascontiguousarray(labels_vol)
+        label_counts = np.bincount(label_vol_contig.ravel())
+        label_unique = np.nonzero(label_counts)[0]
+        label_sorted = label_unique[np.argsort([i for i in label_counts if i>0])]
+
         logging.info(f"Unique labels: {label_sorted}")
-        logging.info(f"Label counts: {np.sort(label_counts)}")
+        logging.info(f"Label counts: {np.sort([i for i in label_counts if i>0])}")
 
         label_flattened = labels_vol.flatten()
         counts_matrix = np.zeros((len(label_sorted), *volume_size), dtype=np.uint8)
@@ -547,7 +551,7 @@ class VolSeg2dPredictor:
         probs_matrix = np.zeros((self.num_labels, *data_vol.shape), dtype=np.uint8)
         if self.settings.quality=="medium":
             g = self._predict_3_ways_generator(data_vol)
-            curr_counts, labels_list = self._convert_labels_map_to_count(labels)
+            curr_counts, labels_list = self._convert_labels_map_to_count(data_vol)
             for i in range(1, 4):
                 logging.info(f"Voter {i} of 3 voting...")
                 labels = next(g)
@@ -567,9 +571,10 @@ class VolSeg2dPredictor:
                     probs_matrix[labels_list[idx]] += curr_label
 
         logging.info("Aggregating prediction votes:")
-        full_prediction_labels = np.argmax(probs_matrix, axis=0)
+        probs_matrix_contig = np.ascontiguousarray(probs_matrix)
+        full_prediction_labels = np.argmax(probs_matrix_contig, axis=0)
         full_prediction_probs = np.squeeze(
-            np.take_along_axis(probs_matrix, full_prediction_labels[np.newaxis, ...], axis=0)
+            np.take_along_axis(probs_matrix_contig, full_prediction_labels[np.newaxis, ...], axis=0)
         )
 
         if self.settings.quality=="medium":
@@ -580,7 +585,7 @@ class VolSeg2dPredictor:
         logging.info("Calculating prediction entropy (regularised) from voting distributions:")
         entropy_matrix = np.empty(data_vol.shape)
         for curr_slice in range(len(data_vol)):
-            entropy_matrix[curr_slice] = entropy(probs_matrix[:, curr_slice, ...], axis=0)
+            entropy_matrix[curr_slice] = entropy(probs_matrix_contig[:, curr_slice, ...], axis=0)
         entropy_matrix /= entropy(np.full((len(np.unique(full_prediction_labels)),),
                                           1/len(np.unique(full_prediction_labels))))
 
