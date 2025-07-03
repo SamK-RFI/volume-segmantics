@@ -535,14 +535,19 @@ class VolSeg2dPredictor:
 
     def _predict_12_ways_generator(self, data_vol):
         for curr_axis in [Axis.Z, Axis.Y, Axis.X]:
+            rotation_axes = {
+                Axis.Z: (1, 2),
+                Axis.X: (0, 2),
+                Axis.Y: (0, 1)
+            }
             for k in range(4):
-                labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k)), output_probs=False, axis=curr_axis)
-                yield np.rot90(labels, -k)
+                labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k, axes=rotation_axes[curr_axis])), output_probs=False, axis=curr_axis)
+                yield np.rot90(labels, -k, axes=rotation_axes[curr_axis])
 
     def _predict_Zonly_generator(self, data_vol):
         for k in range(4):
-            labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k)), output_probs=False, axis=Axis.Z)
-            yield np.rot90(labels, -k)
+            labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k, axes=(1, 2))), output_probs=False, axis=Axis.Z)
+            yield np.rot90(labels, -k, axes=(1, 2))
 
     def _convert_labels_map_to_count(self, labels_vol):
         volume_size = labels_vol.shape
