@@ -160,7 +160,10 @@ def one_hot_encode_array(input_array: np.array, num_labels: int) -> np.array:
 def prepare_training_batch(
     batch: "list[torch.Tensor]", device: int, num_labels: int
 ) -> "tuple[torch.Tensor, torch.Tensor]":
-    inputs = batch[0].to(device)
+
+    inputs = batch[0].to(torch.float32)
+    inputs = inputs.to(device)
+    
     targets = batch[1].to(torch.int64)
     # One hot encode the channels
     targets = torch.nn.functional.one_hot(targets, num_classes=num_labels)
