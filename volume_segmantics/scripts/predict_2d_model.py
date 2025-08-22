@@ -33,6 +33,10 @@ def main():
     output_path = create_output_path(root_path, data_vol_path)
     # Get settings object
     settings = get_settings_data(settings_path)
+    
+    if getattr(settings, 'use_2_5d_prediction', False):
+        logging.info("2.5D prediction mode enabled - using RGB channels from adjacent slices")
+    
     # Create prediction manager and predict
     pred_manager = VolSeg2DPredictionManager(model_file_path, data_vol_path, settings)
     pred_manager.predict_volume_to_path(output_path)

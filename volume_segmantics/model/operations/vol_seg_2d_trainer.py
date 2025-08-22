@@ -6,14 +6,24 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import Union
+import copy
+
+
 
 import matplotlib as mpl
+mpl.use("Agg")
+
 import numpy as np
 import termplotlib as tpl
 
-mpl.use("Agg")
 import torch
 import torch.nn as nn
+from torchvision import models
+from torch import nn
+import torch.nn.functional as F
+
+
+
 import volume_segmantics.utilities.base_data_utils as utils
 import volume_segmantics.utilities.config as cfg
 from matplotlib import pyplot as plt
@@ -33,33 +43,15 @@ from volume_segmantics.data.pytorch3dunet_metrics import (
     DiceCoefficient,
     MeanIoU,
 )
-from volume_segmantics.model.model_2d import create_model_on_device, create_model_from_file2
+from volume_segmantics.model.model_2d import create_model_on_device, create_model_from_file_full_weights
 from volume_segmantics.utilities.early_stopping import EarlyStopping
-from torch import nn, einsum
-from functools import wraps, partial
-from math import floor
 
-import torch
-from torchvision import models
 
 from volume_segmantics.model.sam import SAM
 
-import math
-import copy
-import random
-from functools import wraps, partial
-from math import floor
 
-import torch
-from torch import nn, einsum
-import torch.nn.functional as F
 
-from einops import rearrange
-import numpy as np
-# helper functions
 
-import torch
-from torchvision import models
 
 
 class VolSeg2dTrainer:
@@ -119,7 +111,7 @@ class VolSeg2dTrainer:
         model_struc_dict = settings.model
         model_type = utils.get_model_type(settings)
         model_struc_dict["type"] = model_type
-        model_struc_dict["in_channels"] = cfg.MODEL_INPUT_CHANNELS
+        model_struc_dict["in_channels"] = cfg.get_model_input_channels(settings)
         model_struc_dict["classes"] = self.label_no
         return model_struc_dict
 
@@ -280,7 +272,7 @@ class VolSeg2dTrainer:
             if self.full_weights_path:
                 print("Loading pretrained weights for encoder and decoder for lr finder.")
                 # load model weights from file
-                model_tuple = create_model_from_file2(self.full_weights_path, self.model_struc_dict, device_num=self.model_device_num)
+                model_tuple = create_model_from_file_full_weights(self.full_weights_path, self.model_struc_dict, device_num=self.model_device_num)
                 self.model, self.num_labels, self.label_codes = model_tuple
             
             if self.encoder_weights_path:
@@ -298,7 +290,7 @@ class VolSeg2dTrainer:
             if self.full_weights_path:
                 print("Loading pretrained weights for encoder and decoder.")
                 # load model weights from file
-                model_tuple = create_model_from_file2(self.full_weights_path,  self.model_struc_dict, device_num=self.model_device_num)
+                model_tuple = create_model_from_file_full_weights(self.full_weights_path,  self.model_struc_dict, device_num=self.model_device_num)
                 self.model, self.num_labels, self.label_codes = model_tuple
 
             if self.encoder_weights_path:
@@ -666,6 +658,11 @@ class VolSeg2dTrainer:
             gt = torch.argmax(targets[j], dim=0).cpu()
             pred = labels[j].cpu()
             col1 = fig.add_subplot(rows, columns, i + 1)
+            if img.shape[0] == 3: 
+                img = img.permute(1, 2, 0)  
+                plt.imshow(img)
+            else:  
+                plt.imshow(img, cmap="gray")
             plt.imshow(img, cmap="gray")
             col2 = fig.add_subplot(rows, columns, i + 2)
             plt.imshow(gt, cmap="gray")

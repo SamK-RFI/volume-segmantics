@@ -30,6 +30,8 @@ class VolSeg2dPredictor:
             self.model_file_path, device_num=self.model_device_num
         )
         self.model, self.num_labels, self.label_codes = model_tuple
+        
+        self.use_2_5d_prediction = getattr(settings, 'use_2_5d_prediction', False)
 
     def _get_model_from_trainer(self, trainer):
         self.model = trainer.model
@@ -39,15 +41,19 @@ class VolSeg2dPredictor:
         output_prob_list = []
         output_logits_list = []
         data_vol = utils.rotate_array_to_axis(data_vol, axis)
+        
         yx_dims = list(data_vol.shape[1:])
         s_max = nn.Softmax(dim=1)
+        
         data_loader = get_2d_prediction_dataloader(data_vol, self.settings)
+            
         self.model.eval()
         logging.info(f"Predicting segmentation for volume of shape {data_vol.shape}.")
         with torch.no_grad():
             for batch in tqdm(
                 data_loader, desc="Prediction batch", bar_format=cfg.TQDM_BAR_FORMAT
             ):
+                batch = batch.to(torch.float32)
                 output = self.model(batch.to(self.model_device_num))  # Forward pass
                 probs = s_max(output)  # Convert the logits to probs
                 # TODO: Don't flatten channels if one-hot output is needed
@@ -276,7 +282,7 @@ class VolSeg2dPredictor:
 
 
 class VolSeg2dImageDirPredictor:
-    """Class that performs U-Net prediction operations. Does not interact with disk."""
+    """Class that performs U-Net prediction operations on image directories."""
 
     def __init__(self, model_file_path: str, settings: SimpleNamespace) -> None:
         self.model_file_path = Path(model_file_path)
@@ -329,4 +335,7 @@ class VolSeg2dImageDirPredictor:
     def _predict_image_dir_to_one_hot(self, data_vol):
         prediction, _, images_fps = self._predict_single_axis(data_vol)
         return utils.one_hot_encode_array(prediction, self.num_labels), images_fps
+
+
+
 

@@ -166,11 +166,11 @@ class VolSeg2DImageDirPredictionManager():
         image_dir: str,
         settings: SimpleNamespace,
     ) -> None:
-        """Inits VolSeg2DPredictionManager.
+        """Inits VolSeg2DImageDirPredictionManager.
 
         Args:
             model_file_path (str): String of filepath to trained model to use for prediction.
-            data_vol (Union[str, np.ndarray]): String of filepath to data volume or numpy array of data to predict segmentation of.
+            image_dir (str): String of filepath to directory containing images to predict segmentation of.
             settings (SimpleNamespace): A prediction settings object.
         """
         self.image_dir = image_dir
@@ -228,6 +228,7 @@ class VolSeg2DImageDirPredictionManager():
         return prediction
 
 
+
 def save_images(filenames, image_arrays, output_dir):
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -236,7 +237,5 @@ def save_images(filenames, image_arrays, output_dir):
     for filename, img_array in zip(filenames, image_arrays):
         # Construct the full path for the output image
         output_path = os.path.join(output_dir, filename)
-        print(output_path)
-        #print(img_array.shape)
         # Save the image array as a PNG file
         cv2.imwrite(output_path, img_array.reshape((img_array.shape[1], img_array.shape[2])))

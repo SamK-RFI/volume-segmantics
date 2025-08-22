@@ -84,7 +84,7 @@ def create_model_from_file(
     return model, model_dict["model_struc_dict"]["classes"], model_dict["label_codes"]
 
 
-def create_model_from_file2(
+def create_model_from_file_full_weights(
     weights_fn: Path, model_struc_dict : dict, device_num: int = 0, gpu: bool = True,
 ) -> Tuple[torch.nn.Module, int, dict]:
     """Creates and returns a model and the number of segmentation labels
@@ -95,16 +95,11 @@ def create_model_from_file2(
         map_location = "cpu"
     weights_fn = weights_fn.resolve()
     logging.info("Loading model dictionary from file.")
-
     model = create_model_on_device(device_num, model_struc_dict)
-    
     model_dict = torch.load(weights_fn, map_location=map_location, weights_only=False)
-    
     logging.info("Loading in the saved weights.")
     model.load_state_dict(model_dict, strict=False)
-            
     model.to(device=map_location)
     num_classes = 1
-    
     return model, num_classes, None
 
