@@ -10,3 +10,7 @@ downsample: False # If True, data will be downsampled by 2 and segmentation will
 one_hot: False # Output one-hot encoded data
 prediction_axis: Z # One of [Z, Y, X]. Specify axis along which to predict if doing single-axis prediction.
 output_size: 512
+
+# 2.5D prediction settings
+use_2_5d_prediction: True # If True, uses 2.5D prediction (RGB channels from adjacent slices) for models trained with 2.5D slicing
+simple_norm: False # Alternative normalisation to clip_data
