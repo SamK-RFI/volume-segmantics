@@ -8,7 +8,6 @@ import volume_segmantics.utilities.base_data_utils as utils
 import volume_segmantics.utilities.config as cfg
 from torch.utils.data import DataLoader, Subset
 from volume_segmantics.data.datasets import (get_2d_prediction_dataset,
-                                             get_2_5d_prediction_dataset,
                                              get_2d_training_dataset,
                                              get_2d_validation_dataset,
                                              get_2d_image_dir_prediction_dataset)
@@ -62,7 +61,7 @@ def get_2d_training_dataloaders(
 def get_2d_prediction_dataloader(
     data_vol: np.array, settings: SimpleNamespace
 ) -> DataLoader:
-    pred_dataset = get_2d_prediction_dataset(data_vol)
+    pred_dataset = get_2d_prediction_dataset(data_vol, settings)
     batch_size = utils.get_batch_size(settings, prediction=True)
     return DataLoader(
         pred_dataset,
@@ -72,19 +71,6 @@ def get_2d_prediction_dataloader(
         pin_memory=cfg.PIN_CUDA_MEMORY,
     )
 
-
-def get_2_5d_prediction_dataloader(
-    data_vol: np.array, settings: SimpleNamespace
-) -> DataLoader:
-    pred_dataset = get_2_5d_prediction_dataset(data_vol)
-    batch_size = utils.get_batch_size(settings, prediction=True)
-    return DataLoader(
-        pred_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=0,  # Set to 0 for prediction
-        pin_memory=cfg.PIN_CUDA_MEMORY,
-    )
 
 def get_2d_image_dir_prediction_dataloader(
     image_dir: Path, settings: SimpleNamespace
