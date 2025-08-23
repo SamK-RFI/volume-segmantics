@@ -2,13 +2,13 @@
 data_im_dirname: data # Name of folder that sliced data 2D images will be output to
 seg_im_out_dirname: seg # Name of folder that sliced segmentation 2D images with be output to 
 model_output_fn: trained_2d_model # Suffix for the saved model filename
-clip_data: True # Clip and rescale the image data intensities before saving to disk
+clip_data: True # Clip and rescale the image data intensities before saving to disk. This must match setting in 2d_model_predict_settings.yaml
 st_dev_factor: 2.575 # The number of standard deviations from the mean to clip data to
 data_hdf5_path: /data # The internal HDF5 path to the image data
 seg_hdf5_path: /data # The internal HDF5 path to the label data
 
 # 2.5D slicing settings
-use_2_5d_slicing: True # If True, trains on RGB images from adjacent slices 
+use_2_5d_slicing: False # If True, trains on RGB images from adjacent slices 
 skip_border_slices: False # If True, skips first and last slices when using 2.5D slicing
 
 # Settings for model training

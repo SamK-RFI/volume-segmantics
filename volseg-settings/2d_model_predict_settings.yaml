@@ -12,5 +12,5 @@ prediction_axis: Z # One of [Z, Y, X]. Specify axis along which to predict if do
 output_size: 512
 
 # 2.5D prediction settings
-use_2_5d_prediction: True # If True, uses 2.5D prediction (RGB channels from adjacent slices) for models trained with 2.5D slicing
+use_2_5d_prediction: False # If True, uses 2.5D prediction (RGB channels from adjacent slices) for models trained with 2.5D slicing
 simple_norm: False # Alternative normalisation to clip_data
