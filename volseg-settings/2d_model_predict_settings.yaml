@@ -3,6 +3,7 @@ quality: medium # One of [low, medium, high]. low = Single axis, medium = 3 axis
 output_probs: False # If set to True a separate volume of probabilty values for the predictions will be saved alongside the labels.
 clip_data: True # If set to True, the image data intensities will be clipped and rescaled before prediction. Set to False if data is already clipped.
 st_dev_factor: 2.575 # Number of standard deviations from the mean to clip data to.
+minmax_norm: False # Min-max normalisation/rescaling. Only needed if clip_data if False.
 data_hdf5_path: /data # Internal path in the HDF5 file where the image data for prediction is stored.
 cuda_device: 0 # Change this if you would like to run the prediction on a different GPU
 downsample: False # If True, data will be downsampled by 2 and segmentation will be upsampled by 2
@@ -12,4 +13,3 @@ output_size: 512
 
 # 2.5D prediction settings
 use_2_5d_prediction: False # If True, uses 2.5D prediction (RGB channels from adjacent slices) for models trained with 2.5D slicing
-simple_norm: False # Alternative normalisation to clip_data

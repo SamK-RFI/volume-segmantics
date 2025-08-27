@@ -6,6 +6,7 @@ clip_data: True # Clip and rescale the image data intensities before saving to d
 st_dev_factor: 2.575 # The number of standard deviations from the mean to clip data to
 data_hdf5_path: /data # The internal HDF5 path to the image data
 seg_hdf5_path: /data # The internal HDF5 path to the label data
+minmax_norm: True # Min-max normalisation/rescaling. Only needed if clip_data if False.
 
 # 2.5D slicing settings
 use_2_5d_slicing: False # If True, trains on RGB images from adjacent slices 
