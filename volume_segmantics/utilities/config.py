@@ -38,7 +38,7 @@ NUM_WORKERS = 8 # Number of parallel workers for training/validation dataloaders
 PIN_CUDA_MEMORY = True # Whether to pin CUDA memory for faster data transfer
 IM_SIZE_DIVISOR = 32 # Image dimensions need to be a multiple of this value
 MODEL_INPUT_CHANNELS = 1 # Use 1 for grayscale input images, 3 for RGB (2.5D)
-USE_ALL_GPUS = False
+USE_ALL_AVAILABLE_GPUS = False # Use all available GPUs (determined by CUDA_VISIBLE_DEVICES environment variable)
 
 DEFAULT_MIN_LR = 0.00075 # Learning rate to return if LR finder fails
 LR_DIVISOR = 3 # Divide the automatically calculated learning rate (min gradient) by this magic number

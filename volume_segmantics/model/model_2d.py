@@ -57,7 +57,7 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
         model = smp.Segformer(**struct_dict_copy)
         logging.info(f"Sending the Segformer model to device {device_num}")
 
-    if torch.cuda.device_count() > 1 and cfg.USE_ALL_GPUS:
+    if torch.cuda.device_count() > 1 and cfg.USE_ALL_AVAILABLE_GPUS:
         logging.info(f"Using {torch.cuda.device_count()} GPUs.")
         model = DataParallel(model)
         model.to("cuda")
