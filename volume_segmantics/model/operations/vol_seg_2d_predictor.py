@@ -179,7 +179,7 @@ class VolSeg2dPredictor:
 
     def _predict_3_axis_generator(self, data_vol):
         for curr_axis in [Axis.Z, Axis.Y, Axis.X]:
-            labels, _ = self._predict_single_axis(data_vol, output_probs=False, axis=curr_axis)
+            labels, _, _ = self._predict_single_axis(data_vol, output_probs=False, axis=curr_axis)
             yield labels
 
     def _predict_12_ways_generator(self, data_vol):
@@ -190,13 +190,21 @@ class VolSeg2dPredictor:
                 Axis.Y: (0, 1)
             }
             for k in range(4):
-                labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k, axes=rotation_axes[curr_axis])), output_probs=False, axis=curr_axis)
+                labels, probs, _ = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k, axes=rotation_axes[curr_axis])), output_probs=False, axis=curr_axis)
                 yield np.rot90(labels, -k, axes=rotation_axes[curr_axis])
 
     def _predict_Zonly_generator(self, data_vol):
-        for k in range(4):
-            labels, probs = self._predict_single_axis(np.ascontiguousarray(np.rot90(data_vol, k, axes=(1, 2))), output_probs=False, axis=Axis.Z)
-            yield np.rot90(labels, -k, axes=(1, 2))
+            for k in range(4):
+                no_flip = np.ascontiguousarray(np.rot90(data_vol, k, axes=(1, 2)))
+                for flip_count in range(-1, 3):
+                    # No flips
+                    if flip_count == -1:
+                        labels, probs, logits = self._predict_single_axis(data_vol=no_flip, output_probs=True, axis=Axis.Z)
+                        yield np.rot90(labels, -k, axes=(1, 2))
+                    else:
+                        labels, probs, _ = self._predict_single_axis(data_vol=np.flip(no_flip, flip_count), output_probs=False, axis=Axis.Z)
+                        yield np.rot90(np.flip(labels, flip_count), -k, axes=(1, 2))
+
 
     def _convert_labels_map_to_count(self, labels_vol):
         volume_size = labels_vol.shape
@@ -249,8 +257,8 @@ class VolSeg2dPredictor:
 
         elif self.settings.quality=="z_only":
             g = self._predict_Zonly_generator(data_vol)
-            for i in range(4):
-                logging.info(f"Voter {i+1} of 4 voting...")
+            for i in range(16):
+                logging.info(f"Voter {i+1} of 16 voting...")
                 labels = next(g)
                 logging.info(f"Converting votes...")
                 curr_counts, labels_list = self._convert_labels_map_to_count(labels)
