@@ -14,7 +14,10 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def create_output_path(root_path, data_vol_path):
-    pred_out_fn = f"{date.today()}_{data_vol_path.stem}_2d_model_vol_pred.h5"
+    if cfg.OUTPUT_FORMAT == "hdf":
+        pred_out_fn = f"{date.today()}_{data_vol_path.stem}_2d_model_vol_pred.h5"
+    else:
+        pred_out_fn = f"{date.today()}_{data_vol_path.stem}_2d_model_vol_pred.tif"
     return Path(root_path, pred_out_fn)
 
 

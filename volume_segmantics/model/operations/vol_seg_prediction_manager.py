@@ -6,6 +6,7 @@ import os
 import numpy as np
 
 import volume_segmantics.utilities.base_data_utils as utils
+import volume_segmantics.utilities.config as cfg
 from volume_segmantics.data.base_data_manager import BaseDataManager
 from volume_segmantics.model.operations.vol_seg_2d_predictor import VolSeg2dPredictor
 from volume_segmantics.model.operations.vol_seg_2d_predictor import VolSeg2dImageDirPredictor
@@ -91,7 +92,7 @@ class VolSeg2DPredictionManager(BaseDataManager):
                 prediction, probs = self.predictor._predict_12_ways_max_probs(
                     self.data_vol
                 )
-        if output_path is not None:
+        if output_path is not None and cfg.OUTPUT_FORMAT == "hdf":
             utils.save_data_to_hdf5(
                 prediction, output_path, chunking=self.input_data_chunking
             )
@@ -107,6 +108,25 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     f"{output_path.parent / output_path.stem}_logits.h5",
                     chunking=self.input_data_chunking,
                 )
+
+        if output_path is not None and cfg.OUTPUT_FORMAT == "tif":
+            utils.save_data_to_tif(
+                prediction, output_path, compress=True
+            )
+            if probs is not None and self.settings.output_probs:
+                utils.save_data_to_tif(
+                    probs,
+                    f"{output_path.parent / output_path.stem}_probs.tif",
+                    compress=True,
+                )
+            if logits is not None and self.settings.output_probs:
+                utils.save_data_to_tif(
+                    logits,
+                    f"{output_path.parent / output_path.stem}_logits.tif",
+                    compress=False,
+                )
+        
+
         return prediction
 
 

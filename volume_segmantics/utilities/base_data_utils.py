@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import List, Union, Tuple
 
 import h5py as h5
+import tifffile
 import imageio
 import zarr
 import numpy as np
@@ -125,7 +126,7 @@ def get_batch_size(settings: SimpleNamespace, prediction: bool = False) -> int:
     logging.info(
         f"Free GPU memory is {free_gpu_mem:0.2f} GB. "
         f"Number of GPUs: {torch.cuda.device_count()}. "
-        f"Use all available GPUs via DataParallel {cfg.USE_ALL_AVAILABLE_GPUS}. "    
+        f"Use all available GPUs via DataParallel: {cfg.USE_ALL_AVAILABLE_GPUS}. "    
         f"Batch size will be {batch_size}."
     )
 
@@ -380,3 +381,9 @@ def save_data_to_hdf5(data, file_path, internal_path="/data", chunking=True):
         f.create_dataset(
             internal_path, data=data, chunks=chunking, compression=cfg.HDF5_COMPRESSION
         )
+
+
+def save_data_to_tif(data, file_path, compress=True):
+    logging.info(f"Saving data of shape {data.shape} to {file_path}.")
+    compression = 'zlib' if compress else None
+    tifffile.imwrite(file_path, data, compression=compression)
