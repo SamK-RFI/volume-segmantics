@@ -1,10 +1,13 @@
 # Settings for prediction of a 3d volume using a 2d model
 quality: medium # One of [low, medium, high]. low = Single axis, medium = 3 axis, high = 12 ways
 output_probs: False # If set to True a separate volume of probabilty values for the predictions will be saved alongside the labels.
+
+#Normalisation settings
 clip_data: True # If set to True, the image data intensities will be clipped and rescaled before prediction. Set to False if data is already clipped.
 st_dev_factor: 2.575 # Number of standard deviations from the mean to clip data to.
 minmax_norm: False # Min-max normalisation/rescaling. Only needed if clip_data if False.
-use_imagenet_norm: True # If True, applies ImageNet mean/std normalization to input images
+use_imagenet_norm: True # If True, applies ImageNet mean/std normalisation to input images
+
 cuda_device: 0 # Change this if you would like to run the prediction on a different GPU
 downsample: False # If True, data will be downsampled by 2 and segmentation will be upsampled by 2
 one_hot: False # Output one-hot encoded data

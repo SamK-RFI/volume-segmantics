@@ -5,15 +5,16 @@ model_output_fn: trained_2d_model # Suffix for the saved model filename
 data_hdf5_path: /data # The internal HDF5 path to the image data
 seg_hdf5_path: /data # The internal HDF5 path to the label data
 
+#Normalisation settings
 clip_data: True # Clip and rescale the image data intensities before saving to disk
 st_dev_factor: 2.575 # The number of standard deviations from the mean to clip data to
 minmax_norm: False # Min-max normalisation/rescaling. Only needed if clip_data if False.
-use_imagenet_norm: True # If True, applies ImageNet mean/std normalization to input images (wanted if Imagenet pretrained weights used)
-normalization_debug_mode: False # If True, enables detailed normalization debugging in training loop
+use_imagenet_norm: True # If True, applies ImageNet mean/std normalisation to input images (wanted if Imagenet pretrained weights used)
+normalization_debug_mode: False # If True, enables detailed normalisation debugging in training loop
 
 
 # 2.5D slicing settings
-use_2_5d_slicing: True # If True, enables 2.5D slicing with configurable number of slices
+use_2_5d_slicing: False # If True, enables 2.5D slicing with configurable number of slices
 num_slices: 3 # Number of slices to use (must be odd: 3, 5, 7, 9, etc.)
 slice_file_format: "png" # File format for multi-channel slices: "tiff" (default) or "png" (only for 3 channels or less)
 skip_border_slices: False # If True, skips first and last slices when using 2.5D slicing
