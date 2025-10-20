@@ -2,7 +2,7 @@
 
 A toolkit for semantic segmentation of volumetric data using PyTorch deep learning models.
 
-[![DOI](https://joss.theoj.org/papers/10.21105/joss.04691/status.svg)](https://doi.org/10.21105/joss.04691) ![example workflow](https://github.com/DiamondLightSource/volume-segmantics/actions/workflows/tests.yml/badge.svg) ![example workflow](https://github.com/DiamondLightSource/volume-segmantics/actions/workflows/release.yml/badge.svg)
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.04691/status.svg)](https://doi.org/10.21105/joss.04691) 
 
 Volume Segmantics provides a simple command-line interface and API that allows researchers to quickly train a variety of 2D PyTorch segmentation models (e.g.  U-Net, U-Net++, FPN, DeepLabV3+) on their 3D datasets. These models use pre-trained encoders, enabling fast training on small datasets. Subsequently, the library enables using these trained models to segment larger 3D datasets, automatically merging predictions made in orthogonal planes and rotations to reduce artifacts that may result from predicting 3D segmentation using a 2D network.  
 
@@ -22,9 +22,9 @@ The easiest way to install the package is to first create a new conda environmen
 
 After installation, two new commands will be available from your terminal whilst your environment is activated, `model-train-2d` and `model-predict-2d`.
 
-These commands require access to some settings stored in YAML files. These need to be located in a directory named `volseg-settings` within the directory where you are running the commands. The settings files can be copied from [here](https://github.com/DiamondLightSource/volume-segmantics/releases/download/v0.3.2/volseg-settings.zip). 
+These commands require access to some settings stored in YAML files. These need to be located in a directory named `volseg-settings` within the directory where you are running the commands. The settings files can be copied from [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/main/volseg-settings). 
 
-The file `2d_model_train_settings.yaml` can be edited in order to change training parameters such as number of epochs, loss functions, evaluation metrics and also model and encoder architectures. The file `2d_model_predict_settings.yaml` can be edited to change parameters such as the prediction "quality" e.g "low" quality refers to prediction of the volume segmentation by taking images along a single axis (images in the (x,y) plane). For "medium" and "high" quality, predictions are done along 3 axes and in 12 directions (3 axes, 4 rotations) respectively, before being combined by maximum probability. 
+The file `2d_model_train_settings.yaml` can be edited in order to change training parameters such as number of epochs, loss functions, evaluation metrics and also model and encoder architectures. The file `2d_model_predict_settings.yaml` can be edited to change parameters such as the prediction "quality" e.g "low" quality refers to prediction of the volume segmentation by taking images along a single axis (images in the (x,y) plane). For "medium" and "high" quality, predictions are done along 3 axes and in 12 directions (3 axes, 4 rotations) respectively, before being combined by maximum probability. Check normalisation settings carefully for your intended use, different datasets may require different choices from the default. Double-check that the prediction normalisation settings match those used for training.
 
 ### For training a 2d model on a 3d image volume and corresponding labels
 Run the following command. Input files can be in HDF5 or multi-page TIFF format.
@@ -46,7 +46,7 @@ The input data will be segmented using the input model following the settings sp
 
 ### 2.5D Slicing Feature
 
-Volume-segmantics supports 2.5D slicing, which creates RGB images from adjacent slices in the volume. This feature can be enabled by setting `use_2_5d_slicing: True` in the training settings file. This approach provides the model with spatial context from adjacent slices. The encoder adjusts to use the number of input channels specified by the num_slices parameter in  `volseg-settings/2d_model_train_settings.yaml` (when 2.5D slicing is enabled). When using 2.5D slicing for training, you must also enable 2.5D prediction for inference by setting `use_2_5d_prediction: True` in your `2d_model_predict_settings.yaml` file and set the num_slices parameter there.
+Volume-segmantics supports 2.5D slicing, which creates multi-channel images from adjacent slices in the volume. This feature can be enabled by setting `use_2_5d_slicing: True` in the training settings file. This approach provides the model with spatial context from adjacent slices. The encoder adjusts to use the number of input channels specified by the num_slices parameter in  `volseg-settings/2d_model_train_settings.yaml` (when 2.5D slicing is enabled). When using 2.5D slicing for training, you must also enable 2.5D prediction for inference by setting `use_2_5d_prediction: True` in your `2d_model_predict_settings.yaml` file and set the num_slices parameter there.
 
 
 ### Tutorial using example data
@@ -65,6 +65,7 @@ The model architectures which are currently available and tested are:
 - LinkNet
 - PAN
 - SegFormer
+- Vanilla U-net 
 
 The pre-trained encoders that can be used with these architectures are: 
 - ResNet-34
@@ -79,13 +80,10 @@ The pre-trained encoders that can be used with these architectures are:
 
 \* Encoders with asterisk not compatible with PAN.
 
-## Using the API
-
-You can use the functionality of the package in your own program via the API, this is [documented here](https://diamondlightsource.github.io/volume-segmantics/). This interface is the one used by [SuRVoS2](https://github.com/DiamondLightSource/SuRVoS2), a client/server GUI application that allows fast annotation and segmentation of volumetric data. 
 
 ## Contributing
 
-We welcome contributions from the community. Please take a look at out [contribution guidelines](https://github.com/DiamondLightSource/volume-segmantics/blob/main/CONTRIBUTING.md) for more information.
+We welcome contributions from the community. Please take a look at out [contribution guidelines](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/main/CONTRIBUTING.md) for more information.
 
 ## Citation
 
