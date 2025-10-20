@@ -39,10 +39,23 @@ class TrainingDataSlicer(BaseDataManager):
         self.settings = settings
         
         self.use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
+        self.num_slices = getattr(settings, 'num_slices', 3)
+        self.slice_file_format = getattr(settings, 'slice_file_format', 'tiff')
         self.skip_border_slices = getattr(settings, 'skip_border_slices', False)
         
+        # Validate 2.5D settings
         if self.use_2_5d_slicing:
-            logging.info("2.5D slicing mode enabled - creating RGB images from adjacent slices")
+            if self.num_slices % 2 == 0:
+                raise ValueError(f"num_slices must be odd, got {self.num_slices}")
+            if self.num_slices < 3:
+                raise ValueError(f"num_slices must be >= 3, got {self.num_slices}")
+            
+            # Validate file format
+            if self.slice_file_format.lower() == 'png' and self.num_slices > 3:
+                raise ValueError(f"PNG format only supports up to 3 channels, but {self.num_slices} slices were requested. Use 'tiff' format for {self.num_slices} channels.")
+            
+            logging.info(f"2.5D slicing mode enabled - creating {self.num_slices}-channel images from adjacent slices")
+            logging.info(f"Using {self.slice_file_format.upper()} format for multi-channel storage")
             if self.skip_border_slices:
                 logging.info("Border slices will be skipped in 2.5D mode")
         
@@ -143,7 +156,7 @@ class TrainingDataSlicer(BaseDataManager):
             )
 
     def _output_2_5d_slices_to_disk(self, data_arr, output_path, name_prefix):
-        """Coordinates the slicing of an image volume in 2.5D mode (RGB channels).
+        """Coordinates the slicing of an image volume in 2.5D mode (configurable channels).
 
         Args:
             data_arr (array): The data volume to be sliced.
@@ -157,11 +170,12 @@ class TrainingDataSlicer(BaseDataManager):
         
         for axis, index in tqdm(ax_idx_pairs, total=num_ims):
             out_path = output_path / f"{name_prefix}_{axis}_stack_{index:06d}"
-            rgb_slice = self._create_2_5d_slice(data_arr, axis, index)
-            self._output_im(rgb_slice, out_path, label=False, is_rgb=True)
+            multi_channel_slice = self._create_2_5d_slice(data_arr, axis, index)
+            self._output_im(multi_channel_slice, out_path, label=False, is_multi_channel=True)
+
 
     def _create_2_5d_slice(self, data_arr, axis, index):
-        """Creates a 2.5D RGB slice from adjacent slices along the specified axis.
+        """Creates a 2.5D multi-channel slice from adjacent slices along the specified axis.
 
         Args:
             data_arr (array): The data volume to be sliced.
@@ -169,84 +183,79 @@ class TrainingDataSlicer(BaseDataManager):
             index (int): The slice index.
 
         Returns:
-            array: RGB image with shape (height, width, 3).
+            array: Multi-channel image with shape (height, width, num_slices).
         """
         # Get the current slice
         current_slice = utils.axis_index_to_slice(data_arr, axis, index)
         
-        # Get previous and next slices, handling border cases
+        # Get depth along the specified axis
         if axis == "z":
             depth = data_arr.shape[0]
-            if index == 0:
-                prev_slice = current_slice
-                next_slice = utils.axis_index_to_slice(data_arr, axis, index + 1)
-            elif index == depth - 1:
-                prev_slice = utils.axis_index_to_slice(data_arr, axis, index - 1)
-                next_slice = current_slice
-            else:
-                prev_slice = utils.axis_index_to_slice(data_arr, axis, index - 1)
-                next_slice = utils.axis_index_to_slice(data_arr, axis, index + 1)
         elif axis == "y":
             depth = data_arr.shape[1]
-            if index == 0:
-                prev_slice = current_slice
-                next_slice = utils.axis_index_to_slice(data_arr, axis, index + 1)
-            elif index == depth - 1:
-                prev_slice = utils.axis_index_to_slice(data_arr, axis, index - 1)
-                next_slice = current_slice
-            else:
-                prev_slice = utils.axis_index_to_slice(data_arr, axis, index - 1)
-                next_slice = utils.axis_index_to_slice(data_arr, axis, index + 1)
         elif axis == "x":
             depth = data_arr.shape[2]
-            if index == 0:
-                prev_slice = current_slice
-                next_slice = utils.axis_index_to_slice(data_arr, axis, index + 1)
-            elif index == depth - 1:
-                prev_slice = utils.axis_index_to_slice(data_arr, axis, index - 1)
-                next_slice = current_slice
-            else:
-                prev_slice = utils.axis_index_to_slice(data_arr, axis, index - 1)
-                next_slice = utils.axis_index_to_slice(data_arr, axis, index + 1)
+        else:
+            raise ValueError(f"Invalid axis: {axis}")
         
-    
+        center_idx = self.num_slices // 2
+        slices = []
         
-        rgb_image = np.stack([
-            prev_slice,     # Red channel: previous slice
-            current_slice,  # Green channel: current slice
-            next_slice      # Blue channel: next slice
-        ], axis=2)
+        for i in range(self.num_slices):
+            slice_idx = index - center_idx + i
+            
+            # Handle border cases by duplicating edge slices
+            if slice_idx < 0:
+                slice_idx = 0
+            elif slice_idx >= depth:
+                slice_idx = depth - 1
+                
+            slice_data = utils.axis_index_to_slice(data_arr, axis, slice_idx)
+            slices.append(slice_data)
         
-        return rgb_image
+        multi_channel_image = np.stack(slices, axis=2)
+        
+        return multi_channel_image
 
-    
-    def _output_im(self, data, path, label=False, is_rgb=False):
+    def _output_im(self, data, path, label=False, is_multi_channel=False):
         """Converts a slice of data into an image on disk.
 
         Args:
             data (numpy.array): The data slice to be converted.
             path (str): The path of the image file including the filename prefix.
             label (bool): Whether to convert values >1 to 1 for binary segmentation.
-            is_rgb (bool): Whether the data is RGB (3 channels) or grayscale (1 channel).
+            is_multi_channel (bool): Whether the data has multiple channels (2.5D).
         """
-        if is_rgb:
-            # RGB data is already normalized to 0-1, convert to uint8
+        if is_multi_channel:
+            # Multi-channel data is already normalized to 0-1, convert to uint8
             if data.dtype != np.uint8:
                 data = (data * 255).astype(np.uint8)
+
+            file_extension = self.slice_file_format.lower()
+            if file_extension == 'tiff':
+                io.imsave(f"{path}.tiff", data, check_contrast=False)
+            elif file_extension == 'png':
+                # PNG only supports up to 3 channels 
+                io.imsave(f"{path}.png", data, check_contrast=False)
+            else:
+                raise ValueError(f"Unsupported file format: {file_extension}. Use 'tiff' or 'png'.")
         else:
+            # Single channel data
             if data.dtype != np.uint8:
                 data = img_as_ubyte(data)
+            io.imsave(f"{path}.png", data, check_contrast=False)
 
         if label and not self.multilabel:
             data[data > 1] = 1
-            
-        io.imsave(f"{path}.png", data, check_contrast=False)
 
     def _delete_image_dir(self, im_dir_path):
         if im_dir_path.exists():
-            ims = list(im_dir_path.glob("*.png"))
-            logging.info(f"Deleting {len(ims)} images.")
-            for im in ims:
+            png_ims = list(im_dir_path.glob("*.png"))
+            tiff_ims = list(im_dir_path.glob("*.tiff")) + list(im_dir_path.glob("*.tif"))
+            all_ims = png_ims + tiff_ims
+            
+            logging.info(f"Deleting {len(png_ims)} PNG images and {len(tiff_ims)} TIFF images.")
+            for im in all_ims:
                 im.unlink()
             logging.info(f"Deleting the empty directory.")
             im_dir_path.rmdir()

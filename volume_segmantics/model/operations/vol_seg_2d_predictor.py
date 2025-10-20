@@ -30,13 +30,42 @@ class VolSeg2dPredictor:
     def _get_model_from_trainer(self, trainer):
         self.model = trainer.model
 
+    def _apply_2_5d_padding(self, data_vol):
+        """Apply padding to data volume for 2.5D prediction to reduce border artifacts."""
+        if not self.use_2_5d_prediction:
+            return data_vol, None
+        
+        num_slices = getattr(self.settings, 'num_slices', 3)
+        padding_factor = getattr(self.settings, 'prediction_padding_factor', 1.0)
+        pad_width = int((num_slices // 2) * padding_factor)
+        
+        # Pad along the first axis (depth) with edge values
+        padded_vol = np.pad(data_vol, ((pad_width, pad_width), (0, 0), (0, 0)), mode='edge')
+        logging.info(f"Padded volume from {data_vol.shape} to {padded_vol.shape} for 2.5D prediction (factor: {padding_factor})")
+        
+        return padded_vol, pad_width
+
+    def _crop_2_5d_output(self, output_array, pad_width):
+        """Crop output array back to original size after 2.5D padding."""
+        if not self.use_2_5d_prediction or pad_width is None:
+            return output_array
+        
+        # Crop back to original size
+        cropped = output_array[pad_width:pad_width + output_array.shape[0] - 2 * pad_width]
+        logging.info(f"Cropped output from {output_array.shape} back to {cropped.shape}")
+        
+        return cropped
+
     def _predict_single_axis(self, data_vol, output_probs=True, axis=Axis.Z):
         output_vol_list = []
         output_prob_list = []
         output_logits_list = []
         data_vol = utils.rotate_array_to_axis(data_vol, axis)
         
+        # Apply padding for 2.5D prediction
+        data_vol, pad_width = self._apply_2_5d_padding(data_vol)
         yx_dims = list(data_vol.shape[1:])
+        
         s_max = nn.Softmax(dim=1)
         
         data_loader = get_2d_prediction_dataloader(data_vol, self.settings)
@@ -70,14 +99,18 @@ class VolSeg2dPredictor:
                     output_logits_list.append(logits)
 
         labels = np.concatenate(output_vol_list)
+        labels = self._crop_2_5d_output(labels, pad_width)
         labels = utils.rotate_array_to_axis(labels, axis)
+        
         probs = np.concatenate(output_prob_list) if output_prob_list else None
         logits = np.concatenate(output_logits_list) if output_logits_list else None
 
         if probs is not None:
+            probs = self._crop_2_5d_output(probs, pad_width)
             probs = utils.rotate_array_to_axis(probs, axis)
 
         if logits is not None:
+            logits = self._crop_2_5d_output(logits, pad_width)
             logits = utils.rotate_array_to_axis(logits, axis)
 
         return labels, probs, logits
@@ -203,11 +236,6 @@ class VolSeg2dImageDirPredictor:
                     probs = utils.crop_tensor_to_array(probs, yx_dims)
                     output_prob_list.append(probs.astype(np.float16))
 
-        #labels = np.concatenate(output_vol_list)
-        #labels = utils.rotate_array_to_axis(labels, axis)
-        #probs = np.concatenate(output_prob_list) if output_prob_list else None
-        #if probs is not None:
-        #    probs = utils.rotate_array_to_axis(probs, axis)
         return output_vol_list, output_prob_list, images_fps
 
     # TODO FIX

@@ -45,12 +45,7 @@ from volume_segmantics.data.pytorch3dunet_metrics import (
 )
 from volume_segmantics.model.model_2d import create_model_on_device, create_model_from_file_full_weights
 from volume_segmantics.utilities.early_stopping import EarlyStopping
-
-
 from volume_segmantics.model.sam import SAM
-
-
-
 
 
 
@@ -271,27 +266,36 @@ class VolSeg2dTrainer:
             
             if self.full_weights_path:
                 print("Loading pretrained weights for encoder and decoder for lr finder.")
-                # load model weights from file
-                model_tuple = create_model_from_file_full_weights(self.full_weights_path, self.model_struc_dict, device_num=self.model_device_num)
+                model_tuple = create_model_from_file_full_weights(
+                    self.full_weights_path, 
+                    self.model_struc_dict, 
+                    device_num=self.model_device_num
+                )
                 self.model, self.num_labels, self.label_codes = model_tuple
             
-            if self.encoder_weights_path:
-                print("Loading encoder weights for lr finder.")
-                self._load_encoder_weights(self.encoder_weights_path)
-            else:
-                print("Using existing encoder weights.")
-
             lr_to_use = self._run_lr_finder()
-            # Recreate model and start training
             
-            # if no model provided, create a fresh model
+            # Recreate model and optimizer
             self._create_model_and_optimiser(lr_to_use, frozen=frozen)
-
+            
             if self.full_weights_path:
                 print("Loading pretrained weights for encoder and decoder.")
-                # load model weights from file
-                model_tuple = create_model_from_file_full_weights(self.full_weights_path,  self.model_struc_dict, device_num=self.model_device_num)
+                model_tuple = create_model_from_file_full_weights(
+                    self.full_weights_path,
+                    self.model_struc_dict, 
+                    device_num=self.model_device_num
+                )
                 self.model, self.num_labels, self.label_codes = model_tuple
+                
+                
+                if self.use_sam:
+                    base_optimizer = torch.optim.AdamW
+                    if self.adaptive_sam:
+                        self.optimizer = SAM(self.model.parameters(), base_optimizer, lr=lr_to_use, adaptive=True)
+                    else:
+                        self.optimizer = SAM(self.model.parameters(), base_optimizer, lr=lr_to_use)
+                else:
+                    self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr_to_use)
 
             if self.encoder_weights_path:
                 print("Loading encoder weights.")
@@ -302,7 +306,7 @@ class VolSeg2dTrainer:
             early_stopping = self._create_early_stopping(output_path, patience)
             
         else:
-            # Reduce starting LR, since model alreadiy partiallly trained
+            # Reduce starting LR, since model already partiallly trained
             self.starting_lr /= self.lr_reduce_factor
             self.end_lr /= self.lr_reduce_factor
             self.log_lr_ratio = self._calculate_log_lr_ratio()
@@ -321,8 +325,6 @@ class VolSeg2dTrainer:
         lr_scheduler = self._create_oc_lr_scheduler(num_epochs, lr_to_use)
 
 
-        #self.model = torch.compile(self.model)
-        
         for epoch in range(1, num_epochs + 1):
             self.model.train()
             tic = time.perf_counter()
@@ -345,12 +347,34 @@ class VolSeg2dTrainer:
                     inputs, targets = utils.prepare_training_batch(
                         batch, self.model_device_num, self.label_no
                     )
+                
+                    if getattr(self.settings, 'normalization_debug_mode', False):
+                        print(f"\n=== Normalization Check ===")
+                        print(f"Image range: [{inputs.min():.4f}, {inputs.max():.4f}]")
+                        print(f"Image mean: {inputs.mean():.4f}")
+                        print(f"Image std: {inputs.std():.4f}")
+                        
+                        if inputs.min() < -1.0 or inputs.max() > 2.0:
+                            print("Using ImageNet normalization.")
+                        elif inputs.min() >= 0 and inputs.max() <= 1.1:
+                            print("Using [0, 1] normalization.")
+                    
                     output = self.model(inputs)  # Forward pass
+                    
                     # calculate the loss
                     if self.settings.loss_criterion == "CrossEntropyLoss":
                         loss = self.loss_criterion(output, torch.argmax(targets, dim=1))
                     else:
                         loss = self.loss_criterion(output, targets.float())
+                
+
+                    # for name, param in self.model.named_parameters():
+                    #     if param.grad is not None:
+                    #         grad_norm = param.grad.norm().item()
+                    #         weight_norm = param.data.norm().item()
+                    #         print(f"{name}: grad_norm={grad_norm:.6f}, weight_norm={weight_norm:.6f}, ratio={grad_norm/weight_norm:.8f}")
+
+
                     valid_losses.append(loss.item())  # record validation loss
                     s_max = nn.Softmax(dim=1)
                     probs = s_max(output)  # Convert the logits to probs
@@ -661,9 +685,13 @@ class VolSeg2dTrainer:
             if img.shape[0] == 3: 
                 img = img.permute(1, 2, 0)  
                 plt.imshow(img)
+            elif img.shape[0] > 3:
+                # For multi-channel 2.5D, take the center channel
+                center_channel = img.shape[0] // 2
+                img = img[center_channel]
+                plt.imshow(img, cmap="gray")
             else:  
                 plt.imshow(img, cmap="gray")
-            plt.imshow(img, cmap="gray")
             col2 = fig.add_subplot(rows, columns, i + 2)
             plt.imshow(gt, cmap="gray")
             col3 = fig.add_subplot(rows, columns, i + 3)

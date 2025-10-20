@@ -38,7 +38,8 @@ def main():
     settings = get_settings_data(settings_path)
     
     if getattr(settings, 'use_2_5d_prediction', False):
-        logging.info("2.5D prediction mode enabled - using RGB channels from adjacent slices")
+        num_slices = getattr(settings, 'num_slices', 3)
+        logging.info(f"2.5D prediction mode enabled - using {num_slices} channels from adjacent slices")
     
     # Create prediction manager and predict
     pred_manager = VolSeg2DPredictionManager(model_file_path, data_vol_path, settings)

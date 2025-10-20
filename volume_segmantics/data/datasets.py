@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 from types import SimpleNamespace
-
+import imageio
 import cv2
 import numpy as np
 import volume_segmantics.data.augmentations as augs
@@ -22,10 +22,13 @@ class VolSeg2dDataset(BaseDataset):
         imagenet_norm (bool): Whether to normalise according to imagenet stats
         postprocessing (albumentations.Compose): data post-processing
             (e.g. Convert to Tensor)
-        use_2_5d_slicing (bool): Whether images are RGB (2.5D) or grayscale (2D)
+        use_2_5d_slicing (bool): Whether images are multi-channel (2.5D) or grayscale (2D)
 
 
     """
+
+    imagenet_mean = cfg.IMAGENET_MEAN
+    imagenet_std = cfg.IMAGENET_STD
 
     def __init__(
         self,
@@ -38,7 +41,11 @@ class VolSeg2dDataset(BaseDataset):
         use_2_5d_slicing=False,
     ):
 
-        self.images_fps = sorted(list(images_dir.glob("*.png")), key=self.natsort)
+        # Support both PNG and TIFF files
+        self.images_fps = sorted(
+            list(images_dir.glob("*.png")) + list(images_dir.glob("*.tiff")) + list(images_dir.glob("*.tif")), 
+            key=self.natsort
+        )
         self.masks_fps = sorted(list(masks_dir.glob("*.png")), key=self.natsort)
         self.augmentation = augmentation
         self.preprocessing = preprocessing
@@ -47,21 +54,31 @@ class VolSeg2dDataset(BaseDataset):
         self.use_2_5d_slicing = use_2_5d_slicing
         
         if self.use_2_5d_slicing:
-            self.imagenet_mean, self.imagenet_std = cfg.IMAGENET_RGB_MEAN, cfg.IMAGENET_RGB_STD
+            # Use single channel normalization repeated for all channels
+            self.imagenet_mean, self.imagenet_std = cfg.get_imagenet_normalization()
         else:
             self.imagenet_mean, self.imagenet_std = cfg.IMAGENET_MEAN, cfg.IMAGENET_STD
 
     def __getitem__(self, i):
 
-        # read data - handle both grayscale and RGB images
-        if self.use_2_5d_slicing:
-            # Read as RGB for 2.5D slicing
-            image = cv2.imread(str(self.images_fps[i]), cv2.IMREAD_COLOR)
-            # Convert BGR to RGB
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # read data - handle grayscale, RGB, and multi-channel images
+        image_path = self.images_fps[i]
+        file_extension = image_path.suffix.lower()
+        
+        if file_extension in ['.tiff', '.tif']:
+            # Read TIFF files (can have multiple channels)
+            image = imageio.imread(str(image_path))
+            # Ensure image is in the correct format (H, W, C)
+            if len(image.shape) == 2:
+                image = np.expand_dims(image, axis=2)
         else:
-            # Read as grayscale for 2D slicing
-            image = cv2.imread(str(self.images_fps[i]), cv2.IMREAD_GRAYSCALE)
+            if self.use_2_5d_slicing:
+                # Read as color (RGB-equivalent) when using 2.5D PNG slices
+                image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            else:
+                # Read as grayscale for 2D slicing
+                image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
             
         mask = cv2.imread(str(self.masks_fps[i]), 0)
 
@@ -75,6 +92,7 @@ class VolSeg2dDataset(BaseDataset):
             sample = self.augmentation(image=image, mask=mask)
             image, mask = sample["image"], sample["mask"]
 
+        
         if self.imagenet_norm:
             if np.issubdtype(image.dtype, np.integer):
                 # Convert to float
@@ -82,6 +100,9 @@ class VolSeg2dDataset(BaseDataset):
                 image = image / 255
             image = image - self.imagenet_mean
             image = image / self.imagenet_std
+        else:
+            if np.issubdtype(image.dtype, np.integer):
+                image = image.astype(np.float32) / 255.0  # [0, 1]
 
         # apply post-processing
         if self.postprocessing:
@@ -111,11 +132,13 @@ class VolSeg2dPredictionDataset(BaseDataset):
         imagenet_norm (bool): Whether to normalise according to imagenet stats
         postprocessing (albumentations.Compose): data post-processing
             (e.g. Convert to Tensor)
-        use_2_5d_prediction (bool): Whether to create 2.5D representations (RGB channels from adjacent slices)
+        use_2_5d_prediction (bool): Whether to create 2.5D representations (multi-channel from adjacent slices)
 
 
     """
 
+    imagenet_mean = cfg.IMAGENET_MEAN
+    imagenet_std = cfg.IMAGENET_STD
     def __init__(
         self,
         data_vol,
@@ -123,35 +146,41 @@ class VolSeg2dPredictionDataset(BaseDataset):
         imagenet_norm=True,
         postprocessing=None,
         use_2_5d_prediction=False,
+        num_slices=3,
     ):
         self.data_vol = data_vol
         self.preprocessing = preprocessing
         self.imagenet_norm = imagenet_norm
         self.postprocessing = postprocessing
         self.use_2_5d_prediction = use_2_5d_prediction
+        self.num_slices = num_slices
         
         if self.use_2_5d_prediction:
-            self.imagenet_mean, self.imagenet_std = cfg.IMAGENET_RGB_MEAN, cfg.IMAGENET_RGB_STD
+            # Use single channel normalization repeated for all channels
+            self.imagenet_mean, self.imagenet_std = cfg.get_imagenet_normalization()
         else:
             self.imagenet_mean, self.imagenet_std = cfg.IMAGENET_MEAN, cfg.IMAGENET_STD
 
     def __getitem__(self, i):
         if self.use_2_5d_prediction:
             current_slice = self.data_vol[i]
+            depth = len(self.data_vol)
+            center_idx = self.num_slices // 2
+            slices = []
             
-            # Handle border cases
-            if i == 0:  
-                prev_slice = current_slice  
-            else:
-                prev_slice = self.data_vol[i-1]
+            for j in range(self.num_slices):
+                slice_idx = i - center_idx + j
                 
-            if i == len(self) - 1:  
-                next_slice = current_slice  
-            else:
-                next_slice = self.data_vol[i+1]
+                # Handle border cases by duplicating edge slices
+                if slice_idx < 0:
+                    slice_idx = 0
+                elif slice_idx >= depth:
+                    slice_idx = depth - 1
+                    
+                slices.append(self.data_vol[slice_idx])
             
-            # Create RGB image: Red=prev, Green=current, Blue=next
-            image = np.stack([prev_slice, current_slice, next_slice], axis=-1)
+           
+            image = np.stack(slices, axis=-1)
         else:
             # Standard 2D prediction
             image = self.data_vol[i]
@@ -198,6 +227,8 @@ class VolSeg2dImageDirDataset(BaseDataset):
 
     """
 
+    imagenet_mean = cfg.IMAGENET_MEAN
+    imagenet_std = cfg.IMAGENET_STD
 
     def __init__(
         self,
@@ -262,13 +293,16 @@ def get_2d_training_dataset(
 
     img_size = settings.image_size
     use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
+    num_channels = settings.num_slices if use_2_5d_slicing else 1
+    use_imagenet_norm = getattr(settings, 'use_imagenet_norm', False)
     return VolSeg2dDataset(
         image_dir,
         label_dir,
         preprocessing=augs.get_train_preprocess_augs(img_size),
-        augmentation=augs.get_train_augs(img_size),
+        augmentation=augs.get_train_augs(img_size, num_channels=num_channels),
         postprocessing=augs.get_postprocess_augs(),
         use_2_5d_slicing=use_2_5d_slicing,
+        imagenet_norm=use_imagenet_norm,
     )
 
 
@@ -278,23 +312,30 @@ def get_2d_validation_dataset(
 
     img_size = settings.image_size
     use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
+    num_channels = settings.num_slices if use_2_5d_slicing else 1
+    use_imagenet_norm = getattr(settings, 'use_imagenet_norm', False)
     return VolSeg2dDataset(
         image_dir,
         label_dir,
         preprocessing=augs.get_train_preprocess_augs(img_size),
         postprocessing=augs.get_postprocess_augs(),
         use_2_5d_slicing=use_2_5d_slicing,
+        imagenet_norm=use_imagenet_norm,
     )
 
 
 def get_2d_prediction_dataset(data_vol: np.array, settings: SimpleNamespace = None) -> VolSeg2dPredictionDataset:
     y_dim, x_dim = data_vol.shape[1:]
     use_2_5d_prediction = getattr(settings, 'use_2_5d_prediction', False) if settings else False
+    num_slices = getattr(settings, 'num_slices', 3) if settings else 3
+    use_imagenet_norm = getattr(settings, 'use_imagenet_norm', True) if settings else True
     return VolSeg2dPredictionDataset(
         data_vol,
         preprocessing=augs.get_pred_preprocess_augs(y_dim, x_dim),
         postprocessing=augs.get_postprocess_augs(),
         use_2_5d_prediction=use_2_5d_prediction,
+        num_slices=num_slices,
+        imagenet_norm=use_imagenet_norm,
     )
 
 def get_2d_image_dir_prediction_dataset(image_dir: Path, settings: SimpleNamespace) -> VolSeg2dImageDirDataset:

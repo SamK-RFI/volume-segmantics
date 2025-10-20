@@ -39,7 +39,7 @@ NUM_WORKERS = 8 # Number of parallel workers for training/validation dataloaders
 PIN_CUDA_MEMORY = True # Whether to pin CUDA memory for faster data transfer
 IM_SIZE_DIVISOR = 32 # Image dimensions need to be a multiple of this value
 MODEL_INPUT_CHANNELS = 1 # Use 1 for grayscale input images, 3 for RGB (2.5D)
-USE_ALL_AVAILABLE_GPUS = False # Use all available GPUs (determined by CUDA_VISIBLE_DEVICES environment variable)
+USE_ALL_GPUS = False # Use all available GPUs (determined by CUDA_VISIBLE_DEVICES environment variable)
 
 DEFAULT_MIN_LR = 0.00075 # Learning rate to return if LR finder fails
 LR_DIVISOR = 3 # Divide the automatically calculated learning rate (min gradient) by this magic number
@@ -52,11 +52,13 @@ IMAGENET_RGB_STD = [0.229, 0.224, 0.225]
 
 def get_model_input_channels(settings=None):
     if settings and getattr(settings, 'use_2_5d_slicing', False):
-        return 3  
+        return getattr(settings, 'num_slices', 3)  # Return number of slices for 2.5D
     return MODEL_INPUT_CHANNELS  # Default to 1 channel for 2D slicing
 
 def get_imagenet_normalization(settings=None):
     if settings and getattr(settings, 'use_2_5d_slicing', False):
-        return IMAGENET_RGB_MEAN, IMAGENET_RGB_STD  # RGB normalization for 2.5D
+        num_channels = getattr(settings, 'num_slices', 3)
+        # For 2.5D, use single channel normalization repeated for all channels
+        return [IMAGENET_MEAN] * num_channels, [IMAGENET_STD] * num_channels
     return IMAGENET_MEAN, IMAGENET_STD  # Single channel normalization for 2D
  

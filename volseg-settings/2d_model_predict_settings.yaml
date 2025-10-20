@@ -4,12 +4,19 @@ output_probs: False # If set to True a separate volume of probabilty values for 
 clip_data: True # If set to True, the image data intensities will be clipped and rescaled before prediction. Set to False if data is already clipped.
 st_dev_factor: 2.575 # Number of standard deviations from the mean to clip data to.
 minmax_norm: False # Min-max normalisation/rescaling. Only needed if clip_data if False.
-data_hdf5_path: /data # Internal path in the HDF5 file where the image data for prediction is stored.
+use_imagenet_norm: True # If True, applies ImageNet mean/std normalization to input images
 cuda_device: 0 # Change this if you would like to run the prediction on a different GPU
 downsample: False # If True, data will be downsampled by 2 and segmentation will be upsampled by 2
 one_hot: False # Output one-hot encoded data
 prediction_axis: Z # One of [Z, Y, X]. Specify axis along which to predict if doing single-axis prediction.
-output_size: 512 # only used for image directory prediction
+output_size: 512 # Only for predict imagedir 
+data_hdf5_path: /data # Internal path in the HDF5 file where the image data for prediction is stored (only for HDF output, see config.py)
+
 
 # 2.5D prediction settings
-use_2_5d_prediction: False # If True, uses 2.5D prediction (RGB channels from adjacent slices) for models trained with 2.5D slicing
+use_2_5d_prediction: True # If True, uses 2.5D prediction with configurable number of slices
+num_slices: 3 # Number of slices to use (must match training configuration)
+prediction_padding_factor: 1.0 # Multiplier for padding amount (1.0 = num_slices//2, 2.0 = num_slices, etc.)
+
+
+
