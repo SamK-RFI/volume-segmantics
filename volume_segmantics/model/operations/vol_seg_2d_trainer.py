@@ -678,19 +678,28 @@ class VolSeg2dTrainer:
         columns = 3
         j = 0
         for i in range(columns * rows)[::3]:
-            img = inputs[j].squeeze().cpu()
+            img = inputs[j].cpu()
             gt = torch.argmax(targets[j], dim=0).cpu()
             pred = labels[j].cpu()
             col1 = fig.add_subplot(rows, columns, i + 1)
-            if img.shape[0] == 3: 
+            
+            
+            if len(img.shape) == 4:  
+                num_channels = img.shape[1]
+                img = img.squeeze(0)  
+            else:  
+                num_channels = img.shape[0]
+                img = img.squeeze()  
+            
+            if num_channels == 3: 
                 img = img.permute(1, 2, 0)  
                 plt.imshow(img)
-            elif img.shape[0] > 3:
+            elif num_channels > 3:
                 # For multi-channel 2.5D, take the center channel
-                center_channel = img.shape[0] // 2
+                center_channel = num_channels // 2
                 img = img[center_channel]
                 plt.imshow(img, cmap="gray")
-            else:  
+            else:  # Single channel (num_channels == 1)
                 plt.imshow(img, cmap="gray")
             col2 = fig.add_subplot(rows, columns, i + 2)
             plt.imshow(gt, cmap="gray")
