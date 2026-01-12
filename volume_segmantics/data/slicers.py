@@ -24,6 +24,7 @@ class TrainingDataSlicer(BaseDataManager):
         data_vol: Union[str, np.ndarray],
         label_vol: Union[str, np.ndarray],
         settings: SimpleNamespace,
+        label_type: str = "segmentation",
     ):
         """Inits TrainingDataSlicer.
 
@@ -31,12 +32,14 @@ class TrainingDataSlicer(BaseDataManager):
             data_vol(Union[str, np.ndarray]): Either a path to an image data volume or a numpy array of 3D image data
             label_vol(Union[str, np.ndarray]): Either a path to a label data volume or a numpy array of 3D label data
             settings(SimpleNamespace): An object containing the training settings
+            label_type(str): Type of label being processed (e.g., "segmentation", "task2", "task3")
         """
         super().__init__(data_vol, settings)
         self.data_im_out_dir = None
         self.seg_im_out_dir = None
         self.multilabel = False
         self.settings = settings
+        self.label_type = label_type
         
         self.use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
         self.num_slices = getattr(settings, 'num_slices', 3)
@@ -73,8 +76,11 @@ class TrainingDataSlicer(BaseDataManager):
         self.num_seg_classes = len(seg_classes)
         if self.num_seg_classes > 2:
             self.multilabel = True
+        
+        # Use appropriate label type name in logging
+        label_name = self.label_type.capitalize() if self.label_type != "segmentation" else "segmentation"
         logging.info(
-            "Number of classes in segmentation dataset:" f" {self.num_seg_classes}"
+            f"Number of classes in {label_name} dataset: {self.num_seg_classes}"
         )
         logging.info(f"These classes are: {seg_classes}")
         if seg_classes[0] != 0 or not utils.sequential_labels(seg_classes):
@@ -116,7 +122,8 @@ class TrainingDataSlicer(BaseDataManager):
             prefix (str): String to prepend to image filename
         """
         self.seg_im_out_dir = data_dir
-        logging.info("Slicing label volume and saving slices to disk")
+        label_name = self.label_type.capitalize() if self.label_type != "segmentation" else "label"
+        logging.info(f"Slicing {label_name} volume and saving slices to disk")
         os.makedirs(data_dir, exist_ok=True)
         self._output_slices_to_disk(self.seg_vol, data_dir, prefix, label=True)
 
@@ -185,7 +192,6 @@ class TrainingDataSlicer(BaseDataManager):
         Returns:
             array: Multi-channel image with shape (height, width, num_slices).
         """
-        # Get the current slice
         current_slice = utils.axis_index_to_slice(data_arr, axis, index)
         
         # Get depth along the specified axis
@@ -263,6 +269,12 @@ class TrainingDataSlicer(BaseDataManager):
     def clean_up_slices(self) -> None:
         """
         Deletes data and label image slices created by Slicer.
+        Also cleans up task2 and task3 directories if they exist.
         """
         self._delete_image_dir(self.data_im_out_dir)
         self._delete_image_dir(self.seg_im_out_dir)
+        # Clean up task2 and task3 directories if they were created
+        if hasattr(self, 'task2_im_out_dir') and self.task2_im_out_dir is not None:
+            self._delete_image_dir(self.task2_im_out_dir)
+        if hasattr(self, 'task3_im_out_dir') and self.task3_im_out_dir is not None:
+            self._delete_image_dir(self.task3_im_out_dir)

@@ -93,6 +93,22 @@ def get_2d_training_parser() -> argparse.ArgumentParser:
         default=2,
         help="Needed if slicer run separately"
     )
+    parser.add_argument(
+        "--task2",
+        metavar="Path to task2 label directory",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Path to directory containing task2 labels (e.g. boundary labels) for multi-task learning",
+    )
+    parser.add_argument(
+        "--task3",
+        metavar="Path to task3 label directory",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Path to directory containing task3 labels (e.g. distance maps)for multi-task learning",
+    )
     return parser
     
 

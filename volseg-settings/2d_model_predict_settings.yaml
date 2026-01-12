@@ -8,6 +8,8 @@ st_dev_factor: 2.575 # Number of standard deviations from the mean to clip data 
 minmax_norm: False # Min-max normalisation/rescaling. Only needed if clip_data if False.
 use_imagenet_norm: True # If True, applies ImageNet mean/std normalisation to input images
 
+augmentation_library: albumentations # Choose augmentation library: "albumentations" or "monai"
+
 cuda_device: 0 # Change this if you would like to run the prediction on a different GPU
 downsample: False # If True, data will be downsampled by 2 and segmentation will be upsampled by 2
 one_hot: False # Output one-hot encoded data
@@ -15,11 +17,15 @@ prediction_axis: Z # One of [Z, Y, X]. Specify axis along which to predict if do
 output_size: 512 # Only for predict imagedir 
 data_hdf5_path: /data # Internal path in the HDF5 file where the image data for prediction is stored (only for HDF output, see config.py)
 
-
 # 2.5D prediction settings
 use_2_5d_prediction: True # If True, uses 2.5D prediction with configurable number of slices
 num_slices: 3 # Number of slices to use (must match training configuration)
 prediction_padding_factor: 1.0 # Multiplier for padding amount (1.0 = num_slices//2, 2.0 = num_slices, etc.)
 
-
+# Sliding window inference 
+use_sliding_window: false
+sw_roi_size: [512, 512]          # Window size [H, W]
+sw_overlap: 0.25                 # Overlap ratio between windows (0.0 - 1.0)
+sw_batch_size: 4                 # Number of windows to process in parallel
+sw_mode: gaussian                # Weighting mode: 'gaussian' or 'constant'
 

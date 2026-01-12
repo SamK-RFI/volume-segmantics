@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Union
 
+import logging
 import os
 import numpy as np
 
@@ -92,7 +93,11 @@ class VolSeg2DPredictionManager(BaseDataManager):
                 prediction, probs = self.predictor._predict_12_ways_max_probs(
                     self.data_vol
                 )
+        # Get additional task outputs if multi-task model
+        additional_tasks = self.predictor.get_additional_task_outputs()
+        
         if output_path is not None and cfg.OUTPUT_FORMAT == "hdf":
+            # Save primary segmentation output
             utils.save_data_to_hdf5(
                 prediction, output_path, chunking=self.input_data_chunking
             )
@@ -108,6 +113,35 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     f"{output_path.parent / output_path.stem}_logits.h5",
                     chunking=self.input_data_chunking,
                 )
+            
+            # Save additional task outputs
+            if additional_tasks:
+                for task_name, task_data in additional_tasks.items():
+                    task_suffix = self._get_task_suffix(task_name)
+                    task_labels = task_data.get('labels')
+                    task_probs = task_data.get('probs')
+                    task_logits = task_data.get('logits')
+                    
+                    if task_labels is not None:
+                        task_output_path = f"{output_path.parent / output_path.stem}{task_suffix}.h5"
+                        utils.save_data_to_hdf5(
+                            task_labels, task_output_path, chunking=self.input_data_chunking
+                        )
+                        logging.info(f"Saved {task_name} labels to {task_output_path}")
+                    
+                    if task_probs is not None and self.settings.output_probs:
+                        task_probs_path = f"{output_path.parent / output_path.stem}{task_suffix}_probs.h5"
+                        utils.save_data_to_hdf5(
+                            task_probs, task_probs_path, chunking=self.input_data_chunking
+                        )
+                        logging.info(f"Saved {task_name} probabilities to {task_probs_path}")
+                    
+                    if task_logits is not None and self.settings.output_probs:
+                        task_logits_path = f"{output_path.parent / output_path.stem}{task_suffix}_logits.h5"
+                        utils.save_data_to_hdf5(
+                            task_logits, task_logits_path, chunking=self.input_data_chunking
+                        )
+                        logging.info(f"Saved {task_name} logits to {task_logits_path}")
 
         if output_path is not None and cfg.OUTPUT_FORMAT == "tif":
             utils.save_data_to_tif(
@@ -125,9 +159,57 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     f"{output_path.parent / output_path.stem}_logits.tif",
                     compress=False,
                 )
+            
+            if additional_tasks:
+                for task_name, task_data in additional_tasks.items():
+                    task_suffix = self._get_task_suffix(task_name)
+                    task_labels = task_data.get('labels')
+                    task_probs = task_data.get('probs')
+                    task_logits = task_data.get('logits')
+                    
+                    if task_labels is not None:
+                        task_output_path = f"{output_path.parent / output_path.stem}{task_suffix}.tif"
+                        utils.save_data_to_tif(
+                            task_labels, task_output_path, compress=True
+                        )
+                        logging.info(f"Saved {task_name} labels to {task_output_path}")
+                    
+                    if task_probs is not None and self.settings.output_probs:
+                        task_probs_path = f"{output_path.parent / output_path.stem}{task_suffix}_probs.tif"
+                        utils.save_data_to_tif(
+                            task_probs, task_probs_path, compress=True
+                        )
+                        logging.info(f"Saved {task_name} probabilities to {task_probs_path}")
+                    
+                    if task_logits is not None and self.settings.output_probs:
+                        task_logits_path = f"{output_path.parent / output_path.stem}{task_suffix}_logits.tif"
+                        utils.save_data_to_tif(
+                            task_logits, task_logits_path, compress=False
+                        )
+                        logging.info(f"Saved {task_name} logits to {task_logits_path}")
         
 
         return prediction
+
+    def _get_task_suffix(self, task_name):
+        """
+        Map task name to file suffix.
+        
+        Args:
+            task_name: Task name like 'task1', 'task2', etc.
+            
+        Returns:
+            str: Suffix like '_BND', '_DIST', etc.
+        """
+        # Map task indices to suffixes
+        # Primary segmentation is saved without suffix (or with _SEG if needed)
+        # task1 (first additional task, typically boundary): append _BND
+        # task2 (second additional task, typically distance map): append _DIST
+        task_suffix_map = {
+            'task1': '_BND',  # Boundary (first additional task)
+            'task2': '_DIST',  # Distance map (second additional task)
+        }
+        return task_suffix_map.get(task_name, f'_{task_name.upper()}')
 
 
 

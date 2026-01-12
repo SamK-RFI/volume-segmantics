@@ -32,7 +32,7 @@ OUTPUT_FORMAT = "tif" # tif or hdf
 HDF5_COMPRESSION = "gzip"
 
 BIG_CUDA_THRESHOLD = 16 # GPU Memory (GB), above this value batch size is increased
-BIG_CUDA_TRAIN_BATCH = 24 # Size of training batch on big GPU
+BIG_CUDA_TRAIN_BATCH = 16 # Size of training batch on big GPU
 BIG_CUDA_PRED_BATCH = 4 # Size of prediction batch on big GPU
 SMALL_CUDA_BATCH = 8 # Size of batch on small GPU
 NUM_WORKERS = 8 # Number of parallel workers for training/validation dataloaders

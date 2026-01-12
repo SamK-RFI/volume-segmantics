@@ -1,5 +1,5 @@
 """
-    This file is taken from Adrian Wolny's pytorch-3dunet repository found at
+    Some parts of this are taken from Adrian Wolny's pytorch-3dunet repository found at
     https://github.com/wolny/pytorch-3dunet
 """
 

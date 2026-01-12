@@ -12,6 +12,31 @@ minmax_norm: False # Min-max normalisation/rescaling. Only needed if clip_data i
 use_imagenet_norm: True # If True, applies ImageNet mean/std normalisation to input images (wanted if Imagenet pretrained weights used)
 normalization_debug_mode: False # If True, enables detailed normalisation debugging in training loop
 
+# Augmentation settings
+augmentation_library: albumentations # Choose augmentation library: "albumentations" or "monai"
+use_monai_datasets: true # Use MONAI datasets when using MONAI augmentations (default: true when augmentation_library is monai)
+
+# Multi-task learning settings (requires MONAI datasets)
+use_multitask: false # Enable multi-task learning (requires MONAI datasets)
+num_tasks: 2 # Number of tasks: 2 (seg + boundary) or 3 (seg + boundary + task3)
+decoder_sharing: "shared" # Decoder sharing strategy: "shared" (all heads share one decoder) or "separate" (each head has its own decoder)
+# Multi-task loss weights 
+seg_loss_weight: 1.0 # Weight for segmentation loss
+boundary_loss_weight: 1.0 # Weight for boundary loss
+task3_loss_weight: 1.0 # Weight for task3 loss (if num_tasks = 3)
+boundary_loss_type: "bce" # Boundary loss type: "bce", "dice", or "bce_dice"
+
+# Loss selection
+loss_criterion: "CombinedCEDiceLoss"  # or "ClassWeightedDiceLoss"
+# Dice weighting
+dice_weight_mode: "inverse_sqrt_freq"  # or "inverse_freq", "uniform"
+exclude_background_from_dice: False     # Usually true for foreground structures
+# For CombinedCEDiceLoss
+ce_weight: 0.2   # Weight for Cross-Entropy
+dice_weight: 0.8 # Weight for Dice
+# Evaluation
+dice_averaging: "macro"  # or "weighted"
+
 
 # 2.5D slicing settings
 use_2_5d_slicing: False # If True, enables 2.5D slicing with configurable number of slices
@@ -49,7 +74,8 @@ full_weights_path: False
 model:
   # Choose type of segmentation model from the list of those tested so far
   # ["U_Net", "U_Net_Plus_plus", "FPN", "DeepLabV3", "DeepLabV3_Plus"]
-  # "MA_Net", "Linknet", "PAN", "Segformer"]
+  # "MA_Net", "Linknet", "PAN", "Segformer", "Multitask_Unet"]
+  # Note: Use "Multitask_Unet" when use_multitask is true
   type: "U_Net"
   # For more details on encoder types please see smp.readthedocs.io
   # choose encoder, those tested so far include the following:
