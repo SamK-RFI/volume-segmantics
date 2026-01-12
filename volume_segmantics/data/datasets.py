@@ -5,8 +5,25 @@ import imageio
 import cv2
 import numpy as np
 import volume_segmantics.data.augmentations as augs
+import volume_segmantics.data.augmentations_monai as augs_monai
 import volume_segmantics.utilities.config as cfg
 from torch.utils.data import Dataset as BaseDataset
+
+
+def get_augmentation_module(settings: SimpleNamespace):
+    """Returns the appropriate augmentation module based on settings.
+    
+    Args:
+        settings (SimpleNamespace): Settings object containing augmentation_library setting.
+        
+    Returns:
+        Module: Either augmentations (albumentations) or augmentations_monai module.
+    """
+    aug_lib = getattr(settings, 'augmentation_library', 'albumentations')
+    if aug_lib == 'monai':
+        return augs_monai
+    else:
+        return augs
 
 
 class VolSeg2dDataset(BaseDataset):
@@ -295,12 +312,13 @@ def get_2d_training_dataset(
     use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
     num_channels = settings.num_slices if use_2_5d_slicing else 1
     use_imagenet_norm = getattr(settings, 'use_imagenet_norm', False)
+    aug_module = get_augmentation_module(settings)
     return VolSeg2dDataset(
         image_dir,
         label_dir,
-        preprocessing=augs.get_train_preprocess_augs(img_size),
-        augmentation=augs.get_train_augs(img_size, num_channels=num_channels),
-        postprocessing=augs.get_postprocess_augs(),
+        preprocessing=aug_module.get_train_preprocess_augs(img_size),
+        augmentation=aug_module.get_train_augs(img_size, num_channels=num_channels),
+        postprocessing=aug_module.get_postprocess_augs(),
         use_2_5d_slicing=use_2_5d_slicing,
         imagenet_norm=use_imagenet_norm,
     )
@@ -314,11 +332,12 @@ def get_2d_validation_dataset(
     use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
     num_channels = settings.num_slices if use_2_5d_slicing else 1
     use_imagenet_norm = getattr(settings, 'use_imagenet_norm', False)
+    aug_module = get_augmentation_module(settings)
     return VolSeg2dDataset(
         image_dir,
         label_dir,
-        preprocessing=augs.get_train_preprocess_augs(img_size),
-        postprocessing=augs.get_postprocess_augs(),
+        preprocessing=aug_module.get_train_preprocess_augs(img_size),
+        postprocessing=aug_module.get_postprocess_augs(),
         use_2_5d_slicing=use_2_5d_slicing,
         imagenet_norm=use_imagenet_norm,
     )
@@ -329,10 +348,11 @@ def get_2d_prediction_dataset(data_vol: np.array, settings: SimpleNamespace = No
     use_2_5d_prediction = getattr(settings, 'use_2_5d_prediction', False) if settings else False
     num_slices = getattr(settings, 'num_slices', 3) if settings else 3
     use_imagenet_norm = getattr(settings, 'use_imagenet_norm', True) if settings else True
+    aug_module = get_augmentation_module(settings) if settings else augs
     return VolSeg2dPredictionDataset(
         data_vol,
-        preprocessing=augs.get_pred_preprocess_augs(y_dim, x_dim),
-        postprocessing=augs.get_postprocess_augs(),
+        preprocessing=aug_module.get_pred_preprocess_augs(y_dim, x_dim),
+        postprocessing=aug_module.get_postprocess_augs(),
         use_2_5d_prediction=use_2_5d_prediction,
         num_slices=num_slices,
         imagenet_norm=use_imagenet_norm,
@@ -340,10 +360,11 @@ def get_2d_prediction_dataset(data_vol: np.array, settings: SimpleNamespace = No
 
 def get_2d_image_dir_prediction_dataset(image_dir: Path, settings: SimpleNamespace) -> VolSeg2dImageDirDataset:
     img_size = settings.output_size
+    aug_module = get_augmentation_module(settings)
 
     return VolSeg2dImageDirDataset(
         image_dir,
-        preprocessing=augs.get_pred_preprocess_augs(img_size, img_size),
-        postprocessing=augs.get_postprocess_augs(),
+        preprocessing=aug_module.get_pred_preprocess_augs(img_size, img_size),
+        postprocessing=aug_module.get_postprocess_augs(),
     )
 
