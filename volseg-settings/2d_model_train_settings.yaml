@@ -64,13 +64,26 @@ starting_lr: 5e-5 # Lower bound of learning rate search
 end_lr: 1e-3 # Upper Bound of learning rate search
 
 # Semi-supervised learning settings
-use_semi_supervised: False  # Enable semi-supervised training
+use_semi_supervised: False  # Enable semi-supervised training (Mean Teacher)
 unlabeled_data_dir: ""  # Path to directory with unlabeled image slices
 unlabeled_batch_size: 8  # Batch size for unlabeled data (can differ from labeled)
 consistency_weight: 0.1  # Maximum weight for consistency loss (ramped up from 0)
 rampup_start: 0  # Start ramp-up at this iteration
 rampup_end: 10000  # End ramp-up at this iteration
 ema_decay: 0.99  # EMA decay rate (0.99 is standard)
+
+# Pseudo-labeling semi-supervised learning settings
+use_pseudo_labeling: False  # Enable pseudo-labeling (can be combined with Mean Teacher)
+pseudo_label_confidence_threshold: 0.95  # Minimum confidence to accept pseudo-label (0.0-1.0)
+pseudo_label_confidence_method: "max_prob"  # Confidence method: "max_prob", "entropy", "per_class"
+pseudo_label_min_pixels_per_class: 10  # Minimum pixels per class to accept pseudo-label
+pseudo_label_use_teacher: True  # Use teacher model for pseudo-label generation (if Mean Teacher enabled)
+pseudo_label_weight: 1.0  # Weight for pseudo-label loss
+pseudo_label_rampup_start: 0  # Start ramp-up at this iteration
+pseudo_label_rampup_end: 5000  # End ramp-up at this iteration
+pseudo_label_threshold_schedule: "fixed"  # Threshold schedule: "fixed", "linear", "cosine", "adaptive"
+pseudo_label_start_threshold: 0.9  # Starting threshold (for scheduling)
+pseudo_label_target_acceptance_rate: 0.3  # Target acceptance rate (for adaptive scheduling)
 
 # Misc training settings
 lr_find_epochs: 1 # Number of training epochs for learning rate search
