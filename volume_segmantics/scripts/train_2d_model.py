@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -29,11 +30,20 @@ def main():
     max_label_no = getattr(args, "max_label_no")
     task2_dir = getattr(args, "task2", None)
     task3_dir = getattr(args, "task3", None)
+    unlabeled_data_dir = getattr(args, "unlabeled_data_dir", None)
     print("Mode: ",mode )
+    
+    # Check if slicing unlabeled data (mode=slicer and no labels provided)
+    is_unlabeled_slicing = (mode == 'slicer' and label_vols is None)
     
     # Create the settings object
     settings_path = Path(root_path, cfg.SETTINGS_DIR, cfg.TRAIN_SETTINGS_FN)
     settings = get_settings_data(settings_path)
+    
+    # Override unlabeled_data_dir from command line if provided
+    if unlabeled_data_dir is not None:
+        settings.unlabeled_data_dir = str(Path(unlabeled_data_dir).resolve())
+        logging.info(f"Using unlabeled_data_dir from command line: {settings.unlabeled_data_dir}")
     
     task2_im_out_dir = root_path / "task2"  # dir for task2 imgs
     task3_im_out_dir = root_path / "task3"  # dir for task3 imgs
@@ -56,7 +66,21 @@ def main():
     seg_im_out_dir = root_path / settings.seg_im_out_dirname  # dir for seg imgs
     
     if(mode=='slicer'):
-        _, max_label_no = run_slicer(data_vols, label_vols, data_im_out_dir, seg_im_out_dir, settings, task2_vols, task3_vols, task2_im_out_dir, task3_im_out_dir)
+        if is_unlabeled_slicing:
+            # Slice unlabeled volumes (no labels)
+            if unlabeled_data_dir:
+                unlabeled_output_dir = Path(unlabeled_data_dir)
+                if not unlabeled_output_dir.is_absolute():
+                    unlabeled_output_dir = root_path / unlabeled_output_dir
+            else:
+                unlabeled_output_dir = root_path / "unlabeled_data"
+            run_unlabeled_slicer(data_vols, unlabeled_output_dir, settings)
+        else:
+            # Slice labeled volumes (with labels)
+            if label_vols is None:
+                logging.error("Labels are required when slicing labeled data. Use --labels to provide label volumes.")
+                sys.exit(1)
+            _, max_label_no = run_slicer(data_vols, label_vols, data_im_out_dir, seg_im_out_dir, settings, task2_vols, task3_vols, task2_im_out_dir, task3_im_out_dir)
     elif(mode=='trainer'):
         calculated_max_label_no = _calculate_max_label_no_from_slices(seg_im_out_dir)
         # Use calculated value, but allow override if explicitly provided
@@ -67,12 +91,41 @@ def main():
             logging.info(f"Using calculated max_label_no: {calculated_max_label_no}")
             run_trainer(data_im_out_dir, seg_im_out_dir, calculated_max_label_no, settings, root_path)
     else:
+        if label_vols is None:
+            logging.error("Labels are required for training. Use --labels to provide label volumes.")
+            sys.exit(1)
         slicer, max_label_no = run_slicer(data_vols, label_vols, data_im_out_dir, seg_im_out_dir, settings, task2_vols, task3_vols, task2_im_out_dir, task3_im_out_dir)
         run_trainer(data_im_out_dir, seg_im_out_dir, max_label_no, settings, root_path)
         # Clean up all the saved slices
         slicer.clean_up_slices()
 
+def run_unlabeled_slicer(data_vols, unlabeled_output_dir: Path, settings):
+    """
+    Slice unlabeled volumes into 2D images (no labels required).
+    
+    Args:
+        data_vols: List of paths to unlabeled data volumes
+        unlabeled_output_dir: Directory to save sliced unlabeled images
+        settings: Settings object
+    """
+    logging.info(f"Slicing {len(data_vols)} unlabeled volume(s) to {unlabeled_output_dir}")
+    os.makedirs(unlabeled_output_dir, exist_ok=True)
+    
+    for count, data_vol_path in enumerate(data_vols):
+        logging.info(f"Slicing unlabeled volume {count + 1}/{len(data_vols)}: {data_vol_path}")
+        # Create slicer without labels
+        slicer = TrainingDataSlicer(data_vol_path, label_vol=None, settings=settings)
+        data_prefix = f"unlabeled_data{count}"
+        slicer.output_data_slices(unlabeled_output_dir, data_prefix)
+    
+    logging.info(f"Unlabeled data slicing complete. Slices saved to: {unlabeled_output_dir}")
+    logging.info(f"You can now use this directory with --unlabeled_data_dir when training")
+
+
 def run_slicer(data_vols, label_vols, data_im_out_dir, seg_im_out_dir, settings, task2_vols=None, task3_vols=None, task2_im_out_dir=None, task3_im_out_dir=None):
+    if label_vols is None:
+        logging.error("Labels are required for labeled data slicing.")
+        sys.exit(1)
     if len(data_vols) != len(label_vols):
         logging.error(
             "Number of data volumes and number of label volumes must be equal!"

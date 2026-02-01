@@ -66,8 +66,9 @@ def get_2d_training_parser() -> argparse.ArgumentParser:
         type=str,
         action=CheckExt(cfg.LABEL_DATA_EXT),
         nargs="+",
-        required=True,
-        help="the path(s) to file(s) containing a segmented volume for training",
+        required=False,
+        default=None,
+        help="the path(s) to file(s) containing a segmented volume for training (optional when mode=slicer for unlabeled data)",
     )
     parser.add_argument(
         "--" + cfg.DATA_DIR_ARG,
@@ -108,6 +109,14 @@ def get_2d_training_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         help="Path to directory containing task3 labels (e.g. distance maps)for multi-task learning",
+    )
+    parser.add_argument(
+        "--unlabeled_data_dir",
+        metavar="Path to unlabeled data directory",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Path to directory containing unlabeled image slices (required for semi-supervised learning or pseudo-labeling)",
     )
     return parser
     

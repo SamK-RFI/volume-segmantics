@@ -459,3 +459,305 @@ class TrainingVisualizer:
         logging.info(f"Saving prediction visualization to {out_path}")
         plt.savefig(out_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
+    
+    def plot_mean_teacher_predictions(
+        self,
+        model: torch.nn.Module,
+        validation_loader,
+        device_num: int,
+        output_path: Path,
+        epoch: int,
+        ensure_tuple_output_fn,
+    ) -> None:
+        """
+        Visualize Mean Teacher predictions: student vs teacher on validation samples.
+        
+        Args:
+            model: MeanTeacherModel (or wrapped model)
+            validation_loader: Validation data loader
+            device_num: Device number
+            output_path: Path to save figure
+            epoch: Current epoch number
+            ensure_tuple_output_fn: Function to ensure tuple output
+        """
+        from torch.nn import DataParallel
+        
+        # Unwrap DataParallel if needed
+        if isinstance(model, DataParallel):
+            mean_teacher = model.module
+        else:
+            mean_teacher = model
+        
+        # Get student and teacher models
+        student_model = mean_teacher.get_student_model()
+        teacher_model = mean_teacher.get_teacher_model()
+        
+        student_model.eval()
+        teacher_model.eval()
+        
+        batch = next(iter(validation_loader))
+        
+        with torch.no_grad():
+            inputs, targets = utils.prepare_training_batch(
+                batch, device_num, self.num_classes
+            )
+            
+            # Get student predictions
+            student_outputs = ensure_tuple_output_fn(student_model(inputs))
+            student_seg = student_outputs[0]
+            s_max = nn.Softmax(dim=1)
+            student_probs = s_max(student_seg)
+            student_preds = torch.argmax(student_probs, dim=1)
+            
+            # Get teacher predictions
+            teacher_outputs = ensure_tuple_output_fn(teacher_model(inputs))
+            teacher_seg = teacher_outputs[0]
+            teacher_probs = s_max(teacher_seg)
+            teacher_preds = torch.argmax(teacher_probs, dim=1)
+            
+            # Compute consistency (difference between student and teacher)
+            consistency_diff = torch.abs(student_probs - teacher_probs).mean(dim=1)
+            
+            # Get ground truth if available
+            if isinstance(targets, dict):
+                seg_target = targets.get("seg", None)
+            else:
+                seg_target = targets
+            
+            seg_gt = None
+            if seg_target is not None:
+                seg_gt = torch.argmax(seg_target, dim=1)
+        
+        bs = min(getattr(validation_loader, 'batch_size', len(inputs)), len(inputs), 4)
+        num_cols = 5  # Input, GT, Student, Teacher, Consistency
+        
+        fig, axes = plt.subplots(bs, num_cols, figsize=(4 * num_cols, 4 * bs))
+        if bs == 1:
+            axes = axes.reshape(1, -1)
+        
+        for i in range(bs):
+            col_idx = 0
+            img = inputs[i].cpu()
+            
+            if len(img.shape) == 4:
+                img = img.squeeze(0)
+            num_channels = img.shape[0]
+            
+            if num_channels == 3:
+                img_display = img.permute(1, 2, 0)
+                axes[i, col_idx].imshow(img_display)
+            elif num_channels > 3:
+                center = num_channels // 2
+                axes[i, col_idx].imshow(img[center], cmap="gray")
+            else:
+                axes[i, col_idx].imshow(img.squeeze(), cmap="gray")
+            if i == 0:
+                axes[i, col_idx].set_title("Input")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Ground truth
+            if seg_gt is not None:
+                axes[i, col_idx].imshow(seg_gt[i].cpu(), cmap="tab10", vmin=0, vmax=self.num_classes - 1)
+                if i == 0:
+                    axes[i, col_idx].set_title("Ground Truth")
+            else:
+                axes[i, col_idx].text(0.5, 0.5, "N/A", ha="center", va="center")
+                if i == 0:
+                    axes[i, col_idx].set_title("Ground Truth")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Student prediction
+            axes[i, col_idx].imshow(student_preds[i].cpu(), cmap="tab10", vmin=0, vmax=self.num_classes - 1)
+            if i == 0:
+                axes[i, col_idx].set_title("Student Prediction")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Teacher prediction
+            axes[i, col_idx].imshow(teacher_preds[i].cpu(), cmap="tab10", vmin=0, vmax=self.num_classes - 1)
+            if i == 0:
+                axes[i, col_idx].set_title("Teacher Prediction")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Consistency difference (lower = more consistent)
+            axes[i, col_idx].imshow(consistency_diff[i].cpu(), cmap="hot", vmin=0, vmax=1)
+            if i == 0:
+                axes[i, col_idx].set_title("Consistency Diff")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+        
+        plt.suptitle(f"Mean Teacher Predictions - Epoch {epoch}", fontsize=14)
+        plt.tight_layout()
+        
+        out_path = output_path.parent / f"{output_path.stem}_mean_teacher_epoch_{epoch}.png"
+        logging.info(f"Saving Mean Teacher visualization to {out_path}")
+        logging.info(f"Output directory: {output_path.parent}, Model file: {output_path.name}")
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        logging.info(f"Successfully saved Mean Teacher visualization: {out_path}")
+    
+    def plot_pseudo_labeling_visualization(
+        self,
+        model: torch.nn.Module,
+        unlabeled_loader,
+        device_num: int,
+        output_path: Path,
+        epoch: int,
+        pseudo_label_generator,
+        ensure_tuple_output_fn,
+    ) -> None:
+        """
+        Visualize pseudo-labeling results on unlabeled samples.
+        
+        Shows: input, pseudo-labels, confidence map, accepted/rejected mask.
+        
+        Args:
+            model: Model for generating pseudo-labels
+            unlabeled_loader: Unlabeled data loader
+            device_num: Device number
+            output_path: Path to save figure
+            epoch: Current epoch number
+            pseudo_label_generator: PseudoLabelGenerator instance
+            ensure_tuple_output_fn: Function to ensure tuple output
+        """
+        from torch.nn import DataParallel
+        
+        # Unwrap DataParallel if needed
+        if isinstance(model, DataParallel):
+            base_model = model.module
+        else:
+            base_model = model
+        
+        # Get model for pseudo-label generation (teacher if available, else student, else base model)
+        model_for_labels = base_model
+        use_teacher = False
+        
+        if hasattr(base_model, 'get_teacher_model') and hasattr(base_model, 'get_student_model'):
+            # MeanTeacherModel: use teacher if pseudo_label_generator wants it
+            if pseudo_label_generator.use_teacher_for_labels:
+                model_for_labels = base_model.get_teacher_model()
+                use_teacher = True
+            else:
+                model_for_labels = base_model.get_student_model()
+                use_teacher = False
+        elif hasattr(base_model, 'get_student_model'):
+            # Only student available
+            model_for_labels = base_model.get_student_model()
+            use_teacher = False
+        
+        model_for_labels.eval()
+        
+        try:
+            batch = next(iter(unlabeled_loader))
+        except StopIteration:
+            unlabeled_loader_iter = iter(unlabeled_loader)
+            batch = next(unlabeled_loader_iter)
+        
+        with torch.no_grad():
+            # Get unlabeled images
+            if isinstance(batch, dict):
+                if "student" in batch:
+                    unlabeled_inputs = batch["student"]
+                else:
+                    unlabeled_inputs = batch["img"]
+            else:
+                unlabeled_inputs = batch
+            
+            # Convert to tensor and move to device
+            if not isinstance(unlabeled_inputs, torch.Tensor):
+                unlabeled_inputs = torch.as_tensor(unlabeled_inputs, dtype=torch.float32)
+            unlabeled_inputs = unlabeled_inputs.to(device_num)
+            
+            # Ensure correct shape
+            if unlabeled_inputs.dim() == 3:
+                unlabeled_inputs = unlabeled_inputs.unsqueeze(0)
+            
+            # Generate pseudo-labels
+            pseudo_label_dict = pseudo_label_generator.generate_pseudo_labels(
+                model_for_labels,
+                unlabeled_inputs,
+                self.num_classes,
+                use_teacher=use_teacher,
+            )
+            
+            pseudo_labels = pseudo_label_dict["pseudo_labels"]  # (B, H, W)
+            confidence_map = pseudo_label_dict["confidence_map"]  # (B, H, W)
+            mask = pseudo_label_dict["mask"]  # (B, H, W) - accepted pixels
+            probs = pseudo_label_dict["probs"]  # (B, C, H, W)
+        
+        bs = min(len(unlabeled_inputs), 4)
+        num_cols = 4  # Input, Pseudo-labels, Confidence, Accepted/Rejected
+        
+        fig, axes = plt.subplots(bs, num_cols, figsize=(4 * num_cols, 4 * bs))
+        if bs == 1:
+            axes = axes.reshape(1, -1)
+        
+        for i in range(bs):
+            col_idx = 0
+            img = unlabeled_inputs[i].cpu()
+            
+            if len(img.shape) == 4:
+                img = img.squeeze(0)
+            num_channels = img.shape[0]
+            
+            if num_channels == 3:
+                img_display = img.permute(1, 2, 0)
+                axes[i, col_idx].imshow(img_display)
+            elif num_channels > 3:
+                center = num_channels // 2
+                axes[i, col_idx].imshow(img[center], cmap="gray")
+            else:
+                axes[i, col_idx].imshow(img.squeeze(), cmap="gray")
+            if i == 0:
+                axes[i, col_idx].set_title("Unlabeled Input")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Pseudo-labels
+            axes[i, col_idx].imshow(pseudo_labels[i].cpu(), cmap="tab10", vmin=0, vmax=self.num_classes - 1)
+            if i == 0:
+                axes[i, col_idx].set_title("Pseudo-Labels")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Confidence map
+            axes[i, col_idx].imshow(confidence_map[i].cpu(), cmap="viridis", vmin=0, vmax=1)
+            if i == 0:
+                axes[i, col_idx].set_title("Confidence Map")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+            
+            # Accepted/Rejected mask (green = accepted, red = rejected)
+            mask_vis = torch.zeros((3, *mask[i].shape), dtype=torch.float32)
+            accepted = mask[i].cpu().bool()
+            mask_vis[1, accepted] = 1.0  # Green for accepted
+            mask_vis[0, ~accepted] = 1.0  # Red for rejected
+            mask_vis = mask_vis.permute(1, 2, 0)
+            
+            axes[i, col_idx].imshow(mask_vis)
+            if i == 0:
+                axes[i, col_idx].set_title("Accepted (Green) / Rejected (Red)")
+            axes[i, col_idx].axis("off")
+            col_idx += 1
+        
+        # Calculate acceptance rate
+        total_pixels = mask.numel()
+        accepted_pixels = mask.sum().item()
+        acceptance_rate = accepted_pixels / total_pixels if total_pixels > 0 else 0.0
+        
+        plt.suptitle(
+            f"Pseudo-Labeling Visualization - Epoch {epoch} "
+            f"(Acceptance Rate: {acceptance_rate:.2%})",
+            fontsize=14
+        )
+        plt.tight_layout()
+        
+        out_path = output_path.parent / f"{output_path.stem}_pseudo_labeling_epoch_{epoch}.png"
+        logging.info(f"Saving pseudo-labeling visualization to {out_path}")
+        logging.info(f"Output directory: {output_path.parent}, Model file: {output_path.name}")
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        logging.info(f"Successfully saved pseudo-labeling visualization: {out_path}")

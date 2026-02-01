@@ -75,15 +75,36 @@ class VolSeg2dTrainer:
         self.use_semi_supervised = getattr(settings, "use_semi_supervised", False)
         self.use_pseudo_labeling = getattr(settings, "use_pseudo_labeling", False)
         
-        # Check if we need unlabeled data
+        # Check if we need unlabeled data (either Mean Teacher or pseudo-labeling)
         needs_unlabeled_data = self.use_semi_supervised or self.use_pseudo_labeling
         
         if needs_unlabeled_data:
             from volume_segmantics.data.dataloaders import get_semi_supervised_dataloaders
             
-            unlabeled_data_dir = Path(getattr(settings, "unlabeled_data_dir", ""))
+            # Get unlabeled_data_dir from settings (may have been set via command line)
+            unlabeled_data_dir_str = getattr(settings, "unlabeled_data_dir", "")
+            
+            # Validate that unlabeled_data_dir is provided
+            if not unlabeled_data_dir_str or unlabeled_data_dir_str == "":
+                enabled_methods = []
+                if self.use_semi_supervised:
+                    enabled_methods.append("Mean Teacher (use_semi_supervised=True)")
+                if self.use_pseudo_labeling:
+                    enabled_methods.append("pseudo-labeling (use_pseudo_labeling=True)")
+                raise ValueError(
+                    f"unlabeled_data_dir must be provided when using semi-supervised learning. "
+                    f"Enabled methods: {', '.join(enabled_methods)}. "
+                    f"Please provide --unlabeled_data_dir on the command line or set it in the settings file."
+                )
+            
+            unlabeled_data_dir = Path(unlabeled_data_dir_str)
             if not unlabeled_data_dir.exists():
-                raise ValueError(f"Unlabeled data directory not found: {unlabeled_data_dir}")
+                raise ValueError(
+                    f"Unlabeled data directory not found: {unlabeled_data_dir}. "
+                    f"Required for {'Mean Teacher' if self.use_semi_supervised else ''} "
+                    f"{'and ' if self.use_semi_supervised and self.use_pseudo_labeling else ''}"
+                    f"{'pseudo-labeling' if self.use_pseudo_labeling else ''}"
+                )
             
             # Get semi-supervised dataloaders (works for both Mean Teacher and pseudo-labeling)
             self.training_loader, self.unlabeled_loader, self.validation_loader = \
@@ -217,6 +238,13 @@ class VolSeg2dTrainer:
         self.patience = settings.patience
         self.loss_criterion = self._get_loss_criterion()
         self.eval_metric = get_eval_metric(settings.eval_metric)
+        
+        # Initialize ModelManager early (needed for model_struc_dict)
+        self.model_manager = ModelManager(
+            settings=settings,
+            model_device_num=self.model_device_num,
+            label_no=self.label_no,
+        )
         self.model_struc_dict = self.model_manager.get_model_structure_dict(settings)
         
         # Multi-task configuration
@@ -289,11 +317,7 @@ class VolSeg2dTrainer:
             dice_averaging=self.dice_averaging,
             settings=settings,
         )
-        self.model_manager = ModelManager(
-            settings=settings,
-            model_device_num=self.model_device_num,
-            label_no=self.label_no,
-        )
+        # ModelManager already initialized above (needed for model_struc_dict)
         self.logger = TrainingLogger()
         self.visualizer = TrainingVisualizer(
             num_classes=self.label_no,
@@ -382,35 +406,28 @@ class VolSeg2dTrainer:
     
     def _log_pseudo_label_statistics(self, epoch: int):
         """Log pseudo-labeling statistics."""
-        if not self.use_pseudo_labeling or self.pseudo_label_generator is None:
+        if not self.use_pseudo_labeling or self.pseudo_label_stats is None:
             return
         
-        stats = self.pseudo_label_generator._get_current_stats()
+        # Use stats from trainer (not from generator, which may be reset)
+        total_pixels = self.pseudo_label_stats.get("total_pixels", 0)
+        accepted_pixels = self.pseudo_label_stats.get("accepted_pixels", 0)
+        rejected_pixels = total_pixels - accepted_pixels
+        acceptance_rate = accepted_pixels / total_pixels if total_pixels > 0 else 0.0
         
         logging.info(f"\nEpoch {epoch} - Pseudo-Label Statistics:")
-        logging.info(f"  Acceptance Rate: {stats['acceptance_rate']:.4f}")
-        logging.info(f"  Total Pixels: {stats['total_pixels']:,}")
-        logging.info(f"  Accepted Pixels: {stats['accepted_pixels']:,}")
-        logging.info(f"  Rejected Pixels: {stats['rejected_pixels']:,}")
+        logging.info(f"  Acceptance Rate: {acceptance_rate:.4f}")
+        logging.info(f"  Total Pixels: {total_pixels:,}")
+        logging.info(f"  Accepted Pixels: {accepted_pixels:,}")
+        logging.info(f"  Rejected Pixels: {rejected_pixels:,}")
         logging.info(f"  Current Threshold: {self.pseudo_label_generator.confidence_threshold:.4f}")
         
-        # Per-class statistics
-        if stats['per_class']:
-            logging.info("  Per-Class Acceptance:")
-            for class_idx, class_stats in sorted(stats['per_class'].items()):
-                class_acceptance = (
-                    class_stats['accepted'] / class_stats['total']
-                    if class_stats['total'] > 0
-                    else 0.0
-                )
-                class_name = self.codes.get(class_idx, f"Class {class_idx}") if self.codes else f"Class {class_idx}"
-                logging.info(
-                    f"    {class_name}: {class_acceptance:.4f} "
-                    f"({class_stats['accepted']}/{class_stats['total']})"
-                )
+        # Note: Per-class statistics would need to be tracked separately in trainer
+        # For now, we only log aggregate stats
         
         # Reset statistics for next epoch
-        self.pseudo_label_generator.reset_stats()
+        if self.pseudo_label_generator is not None:
+            self.pseudo_label_generator.reset_stats()
         self.pseudo_label_stats = {
             "total_batches": 0,
             "total_pixels": 0,
@@ -515,6 +532,7 @@ class VolSeg2dTrainer:
             create: Whether to create a new model and optimizer from scratch.
             frozen: Whether to freeze encoder convolutional layers.
         """
+        self.output_path = output_path  # Store for visualization
         if create:
             self._create_model_and_optimiser(self.starting_lr, frozen=frozen)
             
@@ -677,14 +695,8 @@ class VolSeg2dTrainer:
             # Clear boundary stats for new epoch
             self.metrics_calculator.clear_boundary_stats()
             self._boundary_stats = []
-            # Clear pseudo-label stats for new epoch
-            if self.use_pseudo_labeling and self.pseudo_label_generator is not None:
-                self.pseudo_label_generator.reset_stats()
-                self.pseudo_label_stats = {
-                    "total_batches": 0,
-                    "total_pixels": 0,
-                    "accepted_pixels": 0,
-                }
+            # Note: Don't clear pseudo-label stats here - they're accumulated during training
+            # and will be logged after validation, then cleared
             
             with torch.no_grad():
                 for batch in tqdm(
@@ -706,6 +718,46 @@ class VolSeg2dTrainer:
             # Pseudo-Label Statistics
             if self.use_pseudo_labeling:
                 self._log_pseudo_label_statistics(epoch)
+            
+            # Semi-Supervised Learning Visualizations
+            if self.use_semi_supervised:
+                mean_teacher_vis_interval = getattr(self.settings, "mean_teacher_vis_epoch_interval", None)
+                if mean_teacher_vis_interval and mean_teacher_vis_interval > 0:
+                    if epoch % mean_teacher_vis_interval == 0:
+                        logging.info(f"Generating Mean Teacher visualization at epoch {epoch} (interval: {mean_teacher_vis_interval})")
+                        try:
+                            self.visualizer.plot_mean_teacher_predictions(
+                                self.model,
+                                self.validation_loader,
+                                self.model_device_num,
+                                self.output_path,
+                                epoch,
+                                self._ensure_tuple_output,
+                            )
+                        except Exception as e:
+                            logging.warning(f"Failed to generate Mean Teacher visualization at epoch {epoch}: {e}")
+                            import traceback
+                            logging.warning(traceback.format_exc())
+            
+            if self.use_pseudo_labeling and self.unlabeled_loader is not None:
+                pseudo_labeling_vis_interval = getattr(self.settings, "pseudo_labeling_vis_epoch_interval", None)
+                if pseudo_labeling_vis_interval and pseudo_labeling_vis_interval > 0:
+                    if epoch % pseudo_labeling_vis_interval == 0:
+                        logging.info(f"Generating pseudo-labeling visualization at epoch {epoch} (interval: {pseudo_labeling_vis_interval})")
+                        try:
+                            self.visualizer.plot_pseudo_labeling_visualization(
+                                self.model,
+                                self.unlabeled_loader,
+                                self.model_device_num,
+                                self.output_path,
+                                epoch,
+                                self.pseudo_label_generator,
+                                self._ensure_tuple_output,
+                            )
+                        except Exception as e:
+                            logging.warning(f"Failed to generate pseudo-labeling visualization at epoch {epoch}: {e}")
+                            import traceback
+                            logging.warning(traceback.format_exc())
             
             # Diagnostic Logging 
             if epoch == 1 or epoch % 5 == 0:
@@ -998,7 +1050,24 @@ class VolSeg2dTrainer:
         mask = pseudo_label_dict["mask"]
         confidence_map = pseudo_label_dict["confidence_map"]
         
-        # Skip if no high-confidence pixels
+        # Update statistics (even if no pixels accepted, so we can track acceptance rate)
+        self.pseudo_label_stats["total_batches"] += 1
+        self.pseudo_label_stats["total_pixels"] += mask.numel()
+        self.pseudo_label_stats["accepted_pixels"] += mask.sum().item()
+        
+        # Debug logging for first few batches to diagnose acceptance issues
+        if self.pseudo_label_stats["total_batches"] <= 3:
+            conf_min = confidence_map.min().item()
+            conf_max = confidence_map.max().item()
+            conf_mean = confidence_map.mean().item()
+            threshold = self.pseudo_label_generator.confidence_threshold
+            logging.info(
+                f"Pseudo-label batch {self.pseudo_label_stats['total_batches']}: "
+                f"confidence range=[{conf_min:.4f}, {conf_max:.4f}], mean={conf_mean:.4f}, "
+                f"threshold={threshold:.4f}, accepted={mask.sum().item()}/{mask.numel()}"
+            )
+        
+        # Skip if no high-confidence pixels (but stats already updated)
         if mask.sum() == 0:
             return
         
@@ -1036,35 +1105,38 @@ class VolSeg2dTrainer:
         else:
             seg_output = outputs
         
+        # Apply mask to predictions and targets (only compute loss on high-confidence pixels)
+        if mask.sum() == 0:
+            return  # No pixels accepted, skip this batch
+        
+        # Expand mask to match output shape: (B, H, W) -> (B, 1, H, W)
+        mask_expanded = mask.unsqueeze(1).float()  # (B, 1, H, W)
+        
+        # Mask the predictions and targets
+        masked_seg_output = seg_output * mask_expanded
+        masked_pseudo_labels_onehot = pseudo_labels_onehot * mask_expanded
+        
         # Compute loss only on masked pixels
         if self.settings.loss_criterion == "CrossEntropyLoss":
             # CrossEntropyLoss expects class indices
             pseudo_labels_indices = torch.argmax(pseudo_labels_onehot, dim=1)
-            loss = self.loss_criterion(seg_output, pseudo_labels_indices)
             
-            # Apply mask (only compute loss on high-confidence pixels)
-            if mask.sum() > 0:
-                # Weight loss by mask
-                loss_per_pixel = loss.view(loss.shape[0], -1)  # (B, H*W)
-                mask_flat = mask.view(mask.shape[0], -1).float()  # (B, H*W)
-                masked_loss = (loss_per_pixel * mask_flat).sum() / mask_flat.sum()
-                loss = masked_loss
-            else:
-                return
+            # For CrossEntropyLoss, we need to handle masking differently
+            # Use reduction='none' to get per-pixel loss, then mask
+            ce_loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
+            loss_per_pixel = ce_loss_fn(seg_output, pseudo_labels_indices)  # (B, H, W)
+            masked_loss_per_pixel = loss_per_pixel * mask.float()  # (B, H, W)
+            loss = masked_loss_per_pixel.sum() / (mask.sum() + 1e-8)
         else:
-            # Other losses expect one-hot or probability targets
-            loss = self.loss_criterion(seg_output, pseudo_labels_onehot)
+            # For DiceLoss and other losses, compute loss on masked predictions/targets
+            # Note: This is an approximation - ideally we'd compute Dice only on masked pixels
+            # For now, we'll compute the loss and weight it by the acceptance rate
+            loss = self.loss_criterion(masked_seg_output, masked_pseudo_labels_onehot)
             
-            # Apply mask
-            if mask.sum() > 0:
-                # Expand mask to match output shape
-                mask_expanded = mask.unsqueeze(1).float()  # (B, 1, H, W)
-                loss_per_pixel = loss.view(loss.shape[0], loss.shape[1], -1)  # (B, C, H*W)
-                mask_flat = mask_expanded.view(mask_expanded.shape[0], mask_expanded.shape[1], -1)  # (B, 1, H*W)
-                masked_loss = (loss_per_pixel * mask_flat).sum() / mask_flat.sum()
-                loss = masked_loss
-            else:
-                return
+            # Weight by acceptance rate to account for masked pixels
+            acceptance_rate = mask.sum().float() / mask.numel()
+            if acceptance_rate > 0:
+                loss = loss / acceptance_rate
         
         # Weighted pseudo-label loss
         weighted_loss = weighted_pseudo_label_w * loss
@@ -1074,12 +1146,7 @@ class VolSeg2dTrainer:
         weighted_loss.backward()
         self.optimizer.step()
         
-        # Update statistics
-        self.pseudo_label_stats["total_batches"] += 1
-        self.pseudo_label_stats["total_pixels"] += mask.numel()
-        self.pseudo_label_stats["accepted_pixels"] += mask.sum().item()
-        
-        # Track loss
+        # Track loss (statistics already updated above)
         self.train_loss_tracker.append_losses({
             "pseudo_label": weighted_loss.item(),
             "pseudo_label_raw": loss.item(),

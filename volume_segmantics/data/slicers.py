@@ -22,15 +22,17 @@ class TrainingDataSlicer(BaseDataManager):
     def __init__(
         self,
         data_vol: Union[str, np.ndarray],
-        label_vol: Union[str, np.ndarray],
-        settings: SimpleNamespace,
+        label_vol: Union[str, np.ndarray, None] = None,
+        settings: SimpleNamespace = None,
         label_type: str = "segmentation",
     ):
+        if settings is None:
+            raise ValueError("settings parameter is required")
         """Inits TrainingDataSlicer.
 
         Args:
             data_vol(Union[str, np.ndarray]): Either a path to an image data volume or a numpy array of 3D image data
-            label_vol(Union[str, np.ndarray]): Either a path to a label data volume or a numpy array of 3D label data
+            label_vol(Union[str, np.ndarray, None]): Either a path to a label data volume, a numpy array of 3D label data, or None for unlabeled data
             settings(SimpleNamespace): An object containing the training settings
             label_type(str): Type of label being processed (e.g., "segmentation", "task2", "task3")
         """
@@ -40,6 +42,7 @@ class TrainingDataSlicer(BaseDataManager):
         self.multilabel = False
         self.settings = settings
         self.label_type = label_type
+        self.has_labels = label_vol is not None
         
         self.use_2_5d_slicing = getattr(settings, 'use_2_5d_slicing', False)
         self.num_slices = getattr(settings, 'num_slices', 3)
@@ -62,14 +65,22 @@ class TrainingDataSlicer(BaseDataManager):
             if self.skip_border_slices:
                 logging.info("Border slices will be skipped in 2.5D mode")
         
-        self.label_vol_path = utils.setup_path_if_exists(label_vol)
-        if self.label_vol_path is not None:
-            self.seg_vol, _ = utils.get_numpy_from_path(
-                self.label_vol_path, internal_path=settings.seg_hdf5_path
-            )
-        elif isinstance(label_vol, np.ndarray):
-            self.seg_vol = label_vol
-        self._preprocess_labels()
+        # Handle labels (optional for unlabeled data)
+        if label_vol is not None:
+            self.label_vol_path = utils.setup_path_if_exists(label_vol)
+            if self.label_vol_path is not None:
+                self.seg_vol, _ = utils.get_numpy_from_path(
+                    self.label_vol_path, internal_path=settings.seg_hdf5_path
+                )
+            elif isinstance(label_vol, np.ndarray):
+                self.seg_vol = label_vol
+            self._preprocess_labels()
+        else:
+            self.label_vol_path = None
+            self.seg_vol = None
+            self.num_seg_classes = 0
+            self.codes = []
+            logging.info("No labels provided - slicing unlabeled data only")
 
     def _preprocess_labels(self):
         seg_classes = np.unique(self.seg_vol)
