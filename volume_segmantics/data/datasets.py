@@ -368,3 +368,110 @@ def get_2d_image_dir_prediction_dataset(image_dir: Path, settings: SimpleNamespa
         postprocessing=aug_module.get_postprocess_augs(),
     )
 
+
+class UnlabeledDataset(BaseDataset):
+    """
+    Dataset for unlabeled images (no labels required).
+    Used for consistency regularization in semi-supervised learning.
+    """
+    
+    imagenet_mean = cfg.IMAGENET_MEAN
+    imagenet_std = cfg.IMAGENET_STD
+    
+    def __init__(
+        self,
+        images_dir: Path,
+        preprocessing=None,
+        augmentation=None,
+        imagenet_norm=True,
+        postprocessing=None,
+        use_2_5d_slicing=False,
+    ):
+        """
+        Initialize unlabeled dataset.
+        
+        Args:
+            images_dir: Directory containing unlabeled images
+            preprocessing: Preprocessing transforms
+            augmentation: Augmentation transforms (strong for student)
+            imagenet_norm: Whether to apply ImageNet normalization
+            postprocessing: Postprocessing transforms
+            use_2_5d_slicing: Whether using 2.5D slicing
+        """
+        # Support both PNG and TIFF files
+        self.images_fps = sorted(
+            list(images_dir.glob("*.png")) + 
+            list(images_dir.glob("*.tiff")) + 
+            list(images_dir.glob("*.tif")),
+            key=self.natsort
+        )
+        self.augmentation = augmentation
+        self.preprocessing = preprocessing
+        self.imagenet_norm = imagenet_norm
+        self.postprocessing = postprocessing
+        self.use_2_5d_slicing = use_2_5d_slicing
+        
+        if self.use_2_5d_slicing:
+            # Use single channel normalization repeated for all channels
+            self.imagenet_mean, self.imagenet_std = cfg.get_imagenet_normalization()
+        else:
+            self.imagenet_mean, self.imagenet_std = cfg.IMAGENET_MEAN, cfg.IMAGENET_STD
+    
+    def __getitem__(self, i):
+        """Return unlabeled image (no mask)."""
+        # Read image - handle grayscale, RGB, and multi-channel images
+        image_path = self.images_fps[i]
+        file_extension = image_path.suffix.lower()
+        
+        if file_extension in ['.tiff', '.tif']:
+            # Read TIFF files (can have multiple channels)
+            image = imageio.imread(str(image_path))
+            # Ensure image is in the correct format (H, W, C)
+            if len(image.shape) == 2:
+                image = np.expand_dims(image, axis=2)
+        else:
+            if self.use_2_5d_slicing:
+                # Read as color (RGB-equivalent) when using 2.5D PNG slices
+                image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            else:
+                # Read as grayscale for 2D slicing
+                image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+        
+        # Apply preprocessing
+        if self.preprocessing:
+            sample = self.preprocessing(image=image)
+            image = sample["image"]
+        
+        # Apply augmentations
+        if self.augmentation:
+            sample = self.augmentation(image=image)
+            image = sample["image"]
+        
+        # Apply ImageNet normalization
+        if self.imagenet_norm:
+            if np.issubdtype(image.dtype, np.integer):
+                # Convert to float
+                image = image.astype(np.float32)
+                image = image / 255
+            image = image - self.imagenet_mean
+            image = image / self.imagenet_std
+        else:
+            if np.issubdtype(image.dtype, np.integer):
+                image = image.astype(np.float32) / 255.0  # [0, 1]
+        
+        # Apply postprocessing
+        if self.postprocessing:
+            sample = self.postprocessing(image=image)
+            image = sample["image"]
+        
+        return image
+    
+    def __len__(self):
+        return len(self.images_fps)
+    
+    @staticmethod
+    def natsort(item):
+        return [
+            int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(item))
+        ]

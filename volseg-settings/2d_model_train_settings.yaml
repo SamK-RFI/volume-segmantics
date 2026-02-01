@@ -62,6 +62,17 @@ pct_lr_inc: 0.3 # the percentage of overall iterations where the LR is increasin
 # Parameters for finding learning rate
 starting_lr: 5e-5 # Lower bound of learning rate search
 end_lr: 1e-3 # Upper Bound of learning rate search
+
+# Semi-supervised learning settings
+use_semi_supervised: False  # Enable semi-supervised training
+unlabeled_data_dir: ""  # Path to directory with unlabeled image slices
+unlabeled_batch_size: 8  # Batch size for unlabeled data (can differ from labeled)
+consistency_weight: 0.1  # Maximum weight for consistency loss (ramped up from 0)
+rampup_start: 0  # Start ramp-up at this iteration
+rampup_end: 10000  # End ramp-up at this iteration
+ema_decay: 0.99  # EMA decay rate (0.99 is standard)
+
+# Misc training settings
 lr_find_epochs: 1 # Number of training epochs for learning rate search
 lr_reduce_factor: 500 # Divisor for start and end LR when finding LR on reloaded model
 plot_lr_graph: False # Set to True if gnuplot is installed and a terminal plot of learning rate is required 
@@ -70,6 +81,7 @@ adaptive_sam: True
 encoder_weights_path: False
 #encoder_weights_path: "/somewhere/improved-resnet4.pt"
 full_weights_path: False
+
 # Parameters to control model architecture
 model:
   # Choose type of segmentation model from the list of those tested so far

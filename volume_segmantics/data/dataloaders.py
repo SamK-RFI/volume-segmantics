@@ -148,3 +148,114 @@ def get_2d_image_dir_prediction_dataloader(
         num_workers=0,  
         pin_memory=cfg.PIN_CUDA_MEMORY,
     ), images_fps
+
+
+def get_semi_supervised_dataloaders(
+    labeled_image_dir: Path,
+    labeled_label_dir: Path,
+    unlabeled_image_dir: Path,
+    settings: SimpleNamespace
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """
+    Create dataloaders for semi-supervised learning.
+    
+    Args:
+        labeled_image_dir: Directory with labeled images
+        labeled_label_dir: Directory with labeled segmentation masks
+        unlabeled_image_dir: Directory with unlabeled images (no labels)
+        settings: Settings object
+    
+    Returns:
+        Tuple of (labeled_train_loader, unlabeled_train_loader, validation_loader)
+    """
+    # Get labeled training and validation loaders (existing functionality)
+    labeled_train_loader, validation_loader = get_2d_training_dataloaders(
+        labeled_image_dir, labeled_label_dir, settings
+    )
+    
+    # Create unlabeled dataset
+    use_monai = (
+        getattr(settings, "augmentation_library", "albumentations") == "monai"
+        and getattr(settings, "use_monai_datasets", True)
+        and MONAI_DATASETS_AVAILABLE
+    )
+    
+    if use_monai:
+        # MONAI unlabeled dataset
+        from volume_segmantics.data.datasets_monai import (
+            get_monai_unlabeled_student_transforms,
+            get_monai_unlabeled_teacher_transforms,
+            UnlabeledMONAIDataset,
+        )
+        
+        img_size = settings.image_size
+        use_2_5d_slicing = getattr(settings, "use_2_5d_slicing", False)
+        num_channels = getattr(settings, "num_slices", 3) if use_2_5d_slicing else 1
+        use_imagenet_norm = getattr(settings, "use_imagenet_norm", True)
+        
+        # Strong augmentations for student
+        student_transforms = get_monai_unlabeled_student_transforms(
+            img_size, num_channels, use_2_5d_slicing, use_imagenet_norm
+        )
+        
+        # Weak augmentations for teacher
+        teacher_transforms = get_monai_unlabeled_teacher_transforms(
+            img_size, num_channels, use_2_5d_slicing, use_imagenet_norm
+        )
+        
+        unlabeled_dataset = UnlabeledMONAIDataset(
+            unlabeled_image_dir,
+            student_transform=student_transforms,
+            teacher_transform=teacher_transforms
+        )
+        
+        unlabeled_batch_size = getattr(settings, "unlabeled_batch_size", 
+                                      utils.get_batch_size(settings))
+        
+        unlabeled_loader = DataLoader(
+            unlabeled_dataset,
+            batch_size=unlabeled_batch_size,
+            shuffle=True,
+            num_workers=cfg.NUM_WORKERS,
+            collate_fn=list_data_collate,
+            pin_memory=cfg.PIN_CUDA_MEMORY,
+            drop_last=True,
+        )
+    else:
+        # Non-MONAI unlabeled dataset
+        from volume_segmantics.data.datasets import UnlabeledDataset
+        from volume_segmantics.data.datasets import get_augmentation_module
+        
+        aug_module = get_augmentation_module(settings)
+        img_size = settings.image_size
+        use_2_5d_slicing = getattr(settings, "use_2_5d_slicing", False)
+        num_channels = getattr(settings, "num_slices", 3) if use_2_5d_slicing else 1
+        
+        # Get training augmentations (strong for student)
+        # Note: For non-MONAI, we use the same augmentation for both student and teacher
+        # The dataset will return the same image, and we can apply different augmentations
+        # in the training loop if needed
+        augmentation = aug_module.get_train_augs(img_size, num_channels=num_channels) if hasattr(aug_module, 'get_train_augs') else None
+        
+        unlabeled_dataset = UnlabeledDataset(
+            images_dir=unlabeled_image_dir,
+            preprocessing=aug_module.get_train_preprocess_augs(img_size) if hasattr(aug_module, 'get_train_preprocess_augs') else None,
+            augmentation=augmentation,
+            imagenet_norm=getattr(settings, "use_imagenet_norm", True),
+            postprocessing=aug_module.get_postprocess_augs() if hasattr(aug_module, 'get_postprocess_augs') else None,
+            use_2_5d_slicing=use_2_5d_slicing,
+        )
+        
+        unlabeled_batch_size = getattr(settings, "unlabeled_batch_size",
+                                      utils.get_batch_size(settings))
+        
+        unlabeled_loader = DataLoader(
+            unlabeled_dataset,
+            batch_size=unlabeled_batch_size,
+            shuffle=True,
+            num_workers=cfg.NUM_WORKERS,
+            pin_memory=cfg.PIN_CUDA_MEMORY,
+            drop_last=True,
+        )
+    
+    return labeled_train_loader, unlabeled_loader, validation_loader

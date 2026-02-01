@@ -423,3 +423,123 @@ def get_monai_validation_dataset(
     )
     return validation_dataset
 
+
+class UnlabeledMONAIDataset(MONAIDataset):
+    """
+    MONAI dataset for unlabeled images with separate augmentations for student and teacher.
+    Used for consistency regularization in semi-supervised learning.
+    """
+    
+    def __init__(
+        self,
+        image_dir: Path,
+        student_transform: Optional[Compose] = None,
+        teacher_transform: Optional[Compose] = None,
+    ):
+        """
+        Initialize unlabeled MONAI dataset.
+        
+        Args:
+            image_dir: Directory containing unlabeled images
+            student_transform: Strong augmentation pipeline for student model
+            teacher_transform: Weak augmentation pipeline for teacher model
+        """
+        if not MONAI_AVAILABLE:
+            raise ImportError("MONAI is not available. Install MONAI to use MONAI datasets.")
+        
+        # Build file list (images only, no labels)
+        image_extensions = ["*.png", "*.tiff", "*.tif"]
+        images_fps = []
+        for ext in image_extensions:
+            images_fps.extend(list(image_dir.glob(ext)))
+        
+        images_fps = sorted(images_fps, key=natsort_key)
+        
+        data_dicts = [{"img": str(img_path)} for img_path in images_fps]
+        
+        super().__init__(data=data_dicts, transform=None)  # No default transform
+        self.student_transform = student_transform
+        self.teacher_transform = teacher_transform
+    
+    def __getitem__(self, index):
+        """Return both student and teacher versions of the image."""
+        data = self.data[index].copy()
+        
+        # Apply student transform (strong augmentation)
+        if self.student_transform is not None:
+            student_data = self.student_transform(data.copy())
+        else:
+            # Load image without transform
+            from monai.transforms import LoadImaged, EnsureChannelFirstd, ToTensord
+            load_transform = Compose([
+                LoadImaged(keys=["img"]),
+                EnsureChannelFirstd(keys=["img"]),
+                ToTensord(keys=["img"])
+            ])
+            student_data = load_transform(data.copy())
+        
+        # Apply teacher transform (weak augmentation)
+        if self.teacher_transform is not None:
+            teacher_data = self.teacher_transform(data.copy())
+        else:
+            # Load image without transform (same as student fallback)
+            from monai.transforms import LoadImaged, EnsureChannelFirstd, ToTensord
+            load_transform = Compose([
+                LoadImaged(keys=["img"]),
+                EnsureChannelFirstd(keys=["img"]),
+                ToTensord(keys=["img"])
+            ])
+            teacher_data = load_transform(data.copy())
+        
+        return {
+            "student": student_data["img"],
+            "teacher": teacher_data["img"],
+        }
+
+
+def get_monai_unlabeled_student_transforms(
+    img_size: int,
+    num_channels: int = 1,
+    use_2_5d_slicing: bool = False,
+    use_imagenet_norm: bool = True,
+) -> Compose:
+    """
+    Get strong augmentation pipeline for student model (unlabeled data).
+    Uses same strong augmentations as training data.
+    
+    Args:
+        img_size: Target image size (square)
+        num_channels: Number of channels in images
+        use_2_5d_slicing: Whether using 2.5D slicing
+        use_imagenet_norm: Whether to use ImageNet normalization
+    
+    Returns:
+        MONAI Compose transform pipeline with strong augmentations
+    """
+    return get_monai_train_transforms(
+        img_size, num_channels, use_2_5d_slicing, num_tasks=1, use_imagenet_norm=use_imagenet_norm
+    )
+
+
+def get_monai_unlabeled_teacher_transforms(
+    img_size: int,
+    num_channels: int = 1,
+    use_2_5d_slicing: bool = False,
+    use_imagenet_norm: bool = True,
+) -> Compose:
+    """
+    Get weak augmentation pipeline for teacher model (unlabeled data).
+    Uses validation transforms (minimal augmentation).
+    
+    Args:
+        img_size: Target image size (square)
+        num_channels: Number of channels in images
+        use_2_5d_slicing: Whether using 2.5D slicing
+        use_imagenet_norm: Whether to use ImageNet normalization
+    
+    Returns:
+        MONAI Compose transform pipeline with weak augmentations
+    """
+    return get_monai_val_transforms(
+        img_size, num_channels, use_2_5d_slicing, num_tasks=1, use_imagenet_norm=use_imagenet_norm
+    )

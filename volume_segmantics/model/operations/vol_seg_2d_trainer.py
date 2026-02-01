@@ -20,6 +20,7 @@ import torch.nn as nn
 from torchvision import models
 from torch import nn
 import torch.nn.functional as F
+from torch.nn import DataParallel
 
 import volume_segmantics.utilities.base_data_utils as utils
 import volume_segmantics.utilities.config as cfg
@@ -43,6 +44,72 @@ from volume_segmantics.data.pytorch3dunet_metrics import (
 from volume_segmantics.model.model_2d import create_model_on_device, create_model_from_file_full_weights
 from volume_segmantics.utilities.early_stopping import EarlyStopping
 from volume_segmantics.model.sam import SAM
+
+
+class ConsistencyLoss(nn.Module):
+    """
+    Consistency loss between student and teacher predictions.
+    Uses MSE on softmax probabilities.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.mse_loss = nn.MSELoss()
+    
+    def forward(
+        self, 
+        student_pred: torch.Tensor, 
+        teacher_pred: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Compute consistency loss between student and teacher predictions.
+        
+        Args:
+            student_pred: Student model prediction (logits)
+            teacher_pred: Teacher model prediction (logits)
+        
+        Returns:
+            Consistency loss value (MSE on softmax probabilities)
+        """
+        # Apply softmax to both predictions 
+        student_probs = torch.softmax(student_pred, dim=1)
+        teacher_probs = torch.softmax(teacher_pred, dim=1)
+        
+        # MSE loss on probabilities
+        return self.mse_loss(student_probs, teacher_probs)
+
+
+def get_rampup_ratio(
+    current_iter: int, 
+    rampup_start: int, 
+    rampup_end: int, 
+    rampup_type: str = "sigmoid"
+) -> float:
+    """
+    Calculate consistency loss weight with ramp-up.
+   
+    
+    Args:
+        current_iter: Current iteration number
+        rampup_start: Start ramp-up at this iteration
+        rampup_end: End ramp-up at this iteration
+        rampup_type: Type of ramp-up ("sigmoid" or "linear")
+    
+    Returns:
+        Current ramp-up ratio (0.0 to 1.0)
+    """
+    if current_iter < rampup_start:
+        return 0.0
+    elif current_iter >= rampup_end:
+        return 1.0
+    else:
+        if rampup_type == "sigmoid":
+            # Sigmoid ramp-up
+            phase = (current_iter - rampup_start) / (rampup_end - rampup_start)
+            return math.exp(-5.0 * (1.0 - phase) ** 2)
+        else:
+            # Linear ramp-up
+            return (current_iter - rampup_start) / (rampup_end - rampup_start)
 
 
 
@@ -549,9 +616,50 @@ class VolSeg2dTrainer:
             labels: Either number of labels or dictionary containing label names.
             settings: A training settings object.
         """
-        self.training_loader, self.validation_loader = get_2d_training_dataloaders(
-            image_dir_path, label_dir_path, settings
-        )
+        # Semi-supervised learning settings
+        self.use_semi_supervised = getattr(settings, "use_semi_supervised", False)
+        if self.use_semi_supervised:
+            from volume_segmantics.data.dataloaders import get_semi_supervised_dataloaders
+            
+            unlabeled_data_dir = Path(getattr(settings, "unlabeled_data_dir", ""))
+            if not unlabeled_data_dir.exists():
+                raise ValueError(f"Unlabeled data directory not found: {unlabeled_data_dir}")
+            
+            # Get semi-supervised dataloaders
+            self.training_loader, self.unlabeled_loader, self.validation_loader = \
+                get_semi_supervised_dataloaders(
+                    image_dir_path, label_dir_path, unlabeled_data_dir, settings
+                )
+            
+            # Create iterators for unlabeled data 
+            self.trainIter_unlab = iter(self.unlabeled_loader)
+            
+            # SSL parameters
+            self.consistency_weight = getattr(settings, "consistency_weight", 0.1)
+            self.rampup_start = getattr(settings, "rampup_start", 0)
+            self.rampup_end = getattr(settings, "rampup_end", 10000)
+            self.ema_decay = getattr(settings, "ema_decay", 0.99)
+            
+            # Create consistency loss
+            self.consistency_loss = ConsistencyLoss()
+            
+            # Global iteration counter (for ramp-up and EMA)
+            self.glob_it = 0
+            
+            logging.info(
+                f"Semi-supervised learning enabled: "
+                f"consistency_weight={self.consistency_weight}, "
+                f"rampup_start={self.rampup_start}, rampup_end={self.rampup_end}, "
+                f"ema_decay={self.ema_decay}"
+            )
+        else:
+            # Standard initialization (existing code)
+            self.training_loader, self.validation_loader = get_2d_training_dataloaders(
+                image_dir_path, label_dir_path, settings
+            )
+            self.unlabeled_loader = None
+            self.consistency_loss = None
+        
         self.label_no = labels if isinstance(labels, int) else len(labels)
         self.codes = labels if isinstance(labels, dict) else {}
         self.settings = settings
@@ -598,6 +706,12 @@ class VolSeg2dTrainer:
             "seg_dice": [],
             "boundary_dice": [],
         }
+        
+        # Add consistency loss tracking if using semi-supervised learning
+        if self.use_semi_supervised:
+            self.epoch_history["train_consistency"] = []
+            self.epoch_history["train_consistency_raw"] = []
+            self.epoch_history["consistency_weight"] = []
         
         # Per-class Dice history
         for c in range(self.label_no):
@@ -681,9 +795,38 @@ class VolSeg2dTrainer:
 
     def _create_model_and_optimiser(self, learning_rate, frozen=False):
         logging.info(f"Setting up the model on device {self.settings.cuda_device}.")
-        self.model = create_model_on_device(
+        base_model = create_model_on_device(
             self.model_device_num, self.model_struc_dict
         )
+        
+        # Wrap with MeanTeacherModel if using semi-supervised learning
+        # Note: create_model_on_device may wrap with DataParallel, so we need to handle that
+        if self.use_semi_supervised:
+            from volume_segmantics.model.mean_teacher import MeanTeacherModel
+            
+            # Unwrap DataParallel if present
+            if isinstance(base_model, DataParallel):
+                base_model_unwrapped = base_model.module
+                was_dataparallel = True
+            else:
+                base_model_unwrapped = base_model
+                was_dataparallel = False
+            
+            # Wrap with MeanTeacherModel
+            self.model = MeanTeacherModel(
+                student_model=base_model_unwrapped,
+                ema_decay=self.ema_decay
+            )
+            
+            # Re-wrap with DataParallel if it was wrapped before
+            if was_dataparallel:
+                self.model = DataParallel(self.model)
+                self.model.to("cuda")
+            else:
+                self.model.to(self.model_device_num)
+        else:
+            self.model = base_model
+        
         if frozen:
             self._freeze_model()
         logging.info(
@@ -691,16 +834,35 @@ class VolSeg2dTrainer:
             f"{self._count_parameters():,} total parameters."
         )
         
-        if self.use_sam:
-            base_optimizer = torch.optim.AdamW
-            self.optimizer = SAM(
-                self.model.parameters(), 
-                base_optimizer, 
-                lr=learning_rate, 
-                adaptive=self.adaptive_sam
-            )
+        # Create optimizer - only update student parameters if using semi-supervised
+        if self.use_semi_supervised:
+            # Get student parameters (unwrap DataParallel if needed)
+            if isinstance(self.model, DataParallel):
+                student_params = self.model.module.student.parameters()
+            else:
+                student_params = self.model.student.parameters()
+            
+            if self.use_sam:
+                base_optimizer = torch.optim.AdamW
+                self.optimizer = SAM(
+                    student_params, 
+                    base_optimizer, 
+                    lr=learning_rate, 
+                    adaptive=self.adaptive_sam
+                )
+            else:
+                self.optimizer = self._create_optimizer(learning_rate, params=student_params)
         else:
-            self.optimizer = self._create_optimizer(learning_rate)
+            if self.use_sam:
+                base_optimizer = torch.optim.AdamW
+                self.optimizer = SAM(
+                    self.model.parameters(), 
+                    base_optimizer, 
+                    lr=learning_rate, 
+                    adaptive=self.adaptive_sam
+                )
+            else:
+                self.optimizer = self._create_optimizer(learning_rate)
         
         self._log_model_architecture_details()
         self._log_learning_rates()
@@ -850,16 +1012,16 @@ class VolSeg2dTrainer:
                 )
                 
                 if stats["trainable"] == 0:
-                    logging.warning(f"  ⚠️  WARNING: {head_name} has NO trainable parameters!")
+                    logging.warning(f"  ??  WARNING: {head_name} has NO trainable parameters!")
         
         if self.use_multitask and hasattr(self.model, 'heads') and len(self.model.heads) > 1:
             boundary_head_idx = 1
             if boundary_head_idx in head_trainability:
                 boundary_stats = head_trainability[boundary_head_idx]
                 if boundary_stats["trainable"] == 0:
-                    logging.error("  ❌ CRITICAL: Boundary head has NO trainable parameters!")
+                    logging.error("  ? CRITICAL: Boundary head has NO trainable parameters!")
                 else:
-                    logging.info(f"  ✓ Boundary head is trainable ({boundary_stats['trainable']:,} params)")
+                    logging.info(f"  ? Boundary head is trainable ({boundary_stats['trainable']:,} params)")
         
         logging.info("=" * 80)
     
@@ -1461,7 +1623,26 @@ class VolSeg2dTrainer:
                     self.model_struc_dict, 
                     device_num=self.model_device_num
                 )
-                self.model, self.num_labels, self.label_codes = model_tuple
+                loaded_model, self.num_labels, self.label_codes = model_tuple
+                
+                # Wrap with MeanTeacherModel if using semi-supervised
+                if self.use_semi_supervised:
+                    from volume_segmantics.model.mean_teacher import MeanTeacherModel
+                    # Unwrap DataParallel if present
+                    if isinstance(loaded_model, DataParallel):
+                        loaded_model = loaded_model.module
+                    self.model = MeanTeacherModel(
+                        student_model=loaded_model,
+                        ema_decay=self.ema_decay
+                    )
+                    # Re-wrap with DataParallel if needed
+                    if torch.cuda.device_count() > 1 and cfg.USE_ALL_GPUS:
+                        self.model = DataParallel(self.model)
+                        self.model.to("cuda")
+                    else:
+                        self.model.to(self.model_device_num)
+                else:
+                    self.model = loaded_model
             
             lr_to_use = self._run_lr_finder()
             
@@ -1474,18 +1655,46 @@ class VolSeg2dTrainer:
                     self.model_struc_dict, 
                     device_num=self.model_device_num
                 )
-                self.model, self.num_labels, self.label_codes = model_tuple
+                loaded_model, self.num_labels, self.label_codes = model_tuple
+                
+                # Wrap with MeanTeacherModel if using semi-supervised
+                if self.use_semi_supervised:
+                    from volume_segmantics.model.mean_teacher import MeanTeacherModel
+                    # Unwrap DataParallel if present
+                    if isinstance(loaded_model, DataParallel):
+                        loaded_model = loaded_model.module
+                    self.model = MeanTeacherModel(
+                        student_model=loaded_model,
+                        ema_decay=self.ema_decay
+                    )
+                    # Re-wrap with DataParallel if needed
+                    if torch.cuda.device_count() > 1 and cfg.USE_ALL_GPUS:
+                        self.model = DataParallel(self.model)
+                        self.model.to("cuda")
+                    else:
+                        self.model.to(self.model_device_num)
+                else:
+                    self.model = loaded_model
+                
+                # Create optimizer with correct parameters
+                if self.use_semi_supervised:
+                    if isinstance(self.model, DataParallel):
+                        student_params = self.model.module.student.parameters()
+                    else:
+                        student_params = self.model.student.parameters()
+                else:
+                    student_params = self.model.parameters()
                 
                 if self.use_sam:
                     base_optimizer = torch.optim.AdamW
                     self.optimizer = SAM(
-                        self.model.parameters(), 
+                        student_params, 
                         base_optimizer, 
                         lr=lr_to_use, 
                         adaptive=self.adaptive_sam
                     )
                 else:
-                    self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr_to_use)
+                    self.optimizer = torch.optim.AdamW(student_params, lr=lr_to_use)
 
             if self.encoder_weights_path:
                 logging.info("Loading encoder weights.")
@@ -1515,8 +1724,21 @@ class VolSeg2dTrainer:
             logging.info(f"Epoch {epoch}/{num_epochs}")
             
             # --- Training Phase ---
+            # Set model to train mode (for MeanTeacherModel, this sets student to train)
             self.model.train()
+            # Also ensure student is in train mode if using semi-supervised
+            if self.use_semi_supervised:
+                if isinstance(self.model, DataParallel):
+                    self.model.module.student.train()
+                else:
+                    self.model.student.train()
             self.train_loss_tracker.clear()
+            
+            # Calculate iter_max for EMA decay
+            iter_max = len(self.training_loader) * num_epochs
+            if self.use_semi_supervised:
+                # Update iter_max to include unlabeled iterations
+                iter_max = max(iter_max, self.rampup_end)
             
             for batch in tqdm(
                 self.training_loader,
@@ -1524,6 +1746,17 @@ class VolSeg2dTrainer:
                 bar_format=cfg.TQDM_BAR_FORMAT,
             ):
                 self._train_one_batch(lr_scheduler, batch)
+                
+                # Train on unlabeled batch (consistency) if using semi-supervised learning
+                if self.use_semi_supervised:
+                    self._train_consistency_batch()
+                    # Update teacher model via EMA
+                    # Unwrap DataParallel if needed
+                    if isinstance(self.model, DataParallel):
+                        self.model.module.update_teacher(iter_max)
+                    else:
+                        self.model.update_teacher(iter_max)
+                    self.glob_it += 1
 
             # --- Validation Phase ---
             self.model.eval()
@@ -1557,7 +1790,9 @@ class VolSeg2dTrainer:
 
             # Early Stopping Check 
             current_valid_loss = self.epoch_history["valid_total"][-1]
-            early_stopping(current_valid_loss, self.model, self.optimizer, self.codes)
+            # Pass glob_it for semi-supervised learning
+            glob_it = self.glob_it if self.use_semi_supervised else None
+            early_stopping(current_valid_loss, self.model, self.optimizer, self.codes, glob_it=glob_it)
 
             if early_stopping.early_stop:
                 logging.info("Early stopping triggered.")
@@ -1659,6 +1894,106 @@ class VolSeg2dTrainer:
         
         return losses["total"]
 
+    def _train_consistency_batch(self) -> None:
+        """
+        Train on unlabeled data using consistency regularization.
+        Uses strong augmentations for student and weak augmentations for teacher.
+        """
+        try:
+            data_unlab = next(self.trainIter_unlab)
+        except StopIteration:
+            self.trainIter_unlab = iter(self.unlabeled_loader)
+            data_unlab = next(self.trainIter_unlab)
+        
+        # Get the actual model (unwrap DataParallel if needed)
+        # This is important when using segmentation_models_pytorch with DataParallel
+        if isinstance(self.model, DataParallel):
+            mean_teacher = self.model.module
+        else:
+            mean_teacher = self.model
+        
+        # Get student and teacher inputs (with different augmentations)
+        if isinstance(data_unlab, dict) and "student" in data_unlab:
+            # Dataset returns both student and teacher versions (MONAI)
+            x1_student = data_unlab["student"]
+            x1_teacher = data_unlab["teacher"]
+        else:
+            # Fallback: Use same input for both (non-MONAI or single augmentation)
+            x1 = data_unlab["img"] if isinstance(data_unlab, dict) else data_unlab
+            # Convert to tensor if needed and ensure correct format
+            if not isinstance(x1, torch.Tensor):
+                x1 = torch.as_tensor(x1, dtype=torch.float32)
+            x1_student = x1
+            x1_teacher = x1.clone()  # Same input for both (weak augmentation handled in dataset)
+        
+        # Ensure tensors are on correct device and type
+        if not isinstance(x1_student, torch.Tensor):
+            x1_student = torch.as_tensor(x1_student, dtype=torch.float32)
+        if not isinstance(x1_teacher, torch.Tensor):
+            x1_teacher = torch.as_tensor(x1_teacher, dtype=torch.float32)
+        
+        # Move to device
+        x1_student = x1_student.to(self.model_device_num)
+        x1_teacher = x1_teacher.to(self.model_device_num)
+        
+        # Ensure correct shape: (B, C, H, W)
+        if x1_student.dim() == 3:
+            x1_student = x1_student.unsqueeze(0)
+        if x1_teacher.dim() == 3:
+            x1_teacher = x1_teacher.unsqueeze(0)
+        
+        # Forward pass through student (strong augmentation)
+        # Student should already be in train mode from main training loop
+        outputs = mean_teacher(x1_student, use_teacher=False)
+        
+        # Get student softmax probabilities
+        if isinstance(outputs, tuple):
+            outputs_soft = tuple(torch.softmax(out, dim=1) for out in outputs)
+        else:
+            outputs_soft = torch.softmax(outputs, dim=1)
+        
+        # Forward pass through teacher (weak augmentation, no gradients)
+        with torch.no_grad():
+            outputs_ema = mean_teacher(x1_teacher, use_teacher=True)
+            if isinstance(outputs_ema, tuple):
+                outputs_ema_soft = tuple(torch.softmax(out, dim=1) for out in outputs_ema)
+            else:
+                outputs_ema_soft = torch.softmax(outputs_ema, dim=1)
+        
+        # Calculate ramp-up ratio
+        rampup_ratio = get_rampup_ratio(
+            self.glob_it, 
+            self.rampup_start, 
+            self.rampup_end, 
+            "sigmoid"
+        )
+        weighted_consistency_w = self.consistency_weight * rampup_ratio
+        
+        # Compute consistency loss
+        if isinstance(outputs_soft, tuple):
+            # Multi-task: sum consistency losses for all tasks
+            loss_reg = sum(
+                self.consistency_loss.mse_loss(student_soft, teacher_soft)
+                for student_soft, teacher_soft in zip(outputs_soft, outputs_ema_soft)
+            )
+        else:
+            loss_reg = self.consistency_loss(outputs, outputs_ema)
+        
+        # Weighted consistency loss
+        weighted_consistency = weighted_consistency_w * loss_reg
+        
+        # Backward pass (only updates student)
+        self.optimizer.zero_grad()
+        weighted_consistency.backward()
+        self.optimizer.step()
+        
+        # Track loss
+        self.train_loss_tracker.append_losses({
+            "consistency": weighted_consistency.item(),
+            "consistency_raw": loss_reg.item(),
+            "consistency_weight": weighted_consistency_w,
+        })
+
     def _validate_one_batch(self, batch) -> None:
         """Validate on a single batch with metric computation."""
         inputs, targets = utils.prepare_training_batch(
@@ -1701,6 +2036,12 @@ class VolSeg2dTrainer:
         self.epoch_history["train_seg"].append(train_avgs.get("seg", 0))
         self.epoch_history["train_boundary"].append(train_avgs.get("boundary", 0))
         self.epoch_history["train_task3"].append(train_avgs.get("task3", 0))
+        
+        # Store consistency loss if using semi-supervised learning
+        if self.use_semi_supervised:
+            self.epoch_history["train_consistency"].append(train_avgs.get("consistency", 0))
+            self.epoch_history["train_consistency_raw"].append(train_avgs.get("consistency_raw", 0))
+            self.epoch_history["consistency_weight"].append(train_avgs.get("consistency_weight", 0))
         
         self.epoch_history["valid_total"].append(valid_avgs.get("total", 0))
         self.epoch_history["valid_seg"].append(valid_avgs.get("seg", 0))
@@ -1768,7 +2109,25 @@ class VolSeg2dTrainer:
         map_location = f"cuda:{self.model_device_num}" if gpu else "cpu"
         model_dict = torch.load(output_path, map_location=map_location, weights_only=False)
         logging.info("Loading model weights.")
-        self.model.load_state_dict(model_dict["model_state_dict"])
+        
+        # Handle MeanTeacherModel state dict
+        if self.use_semi_supervised:
+            # Unwrap DataParallel if needed
+            if isinstance(self.model, DataParallel):
+                self.model.module.load_state_dict(model_dict["model_state_dict"])
+                # Restore glob_it if present
+                if 'glob_it' in model_dict:
+                    self.glob_it = model_dict['glob_it']
+                    self.model.module.glob_it = model_dict['glob_it']
+            else:
+                self.model.load_state_dict(model_dict["model_state_dict"])
+                # Restore glob_it if present
+                if 'glob_it' in model_dict:
+                    self.glob_it = model_dict['glob_it']
+                    self.model.glob_it = model_dict['glob_it']
+        else:
+            self.model.load_state_dict(model_dict["model_state_dict"])
+        
         if optimizer:
             logging.info("Loading optimizer weights.")
             self.optimizer.load_state_dict(model_dict["optimizer_state_dict"])
@@ -1854,8 +2213,10 @@ class VolSeg2dTrainer:
             x * self.log_lr_ratio / (self.lr_find_epochs * len(self.training_loader))
         )
 
-    def _create_optimizer(self, learning_rate):
-        return torch.optim.AdamW(self.model.parameters(), lr=learning_rate)
+    def _create_optimizer(self, learning_rate, params=None):
+        if params is None:
+            params = self.model.parameters()
+        return torch.optim.AdamW(params, lr=learning_rate)
 
     def _create_exponential_lr_scheduler(self):
         return torch.optim.lr_scheduler.LambdaLR(self.optimizer, self._lr_exp_stepper)
