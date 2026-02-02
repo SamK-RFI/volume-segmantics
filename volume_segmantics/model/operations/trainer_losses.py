@@ -177,8 +177,8 @@ class ClassWeightedDiceLoss(nn.Module):
             freq = class_counts / (total + self.smooth)
             weights = 1.0 / (torch.sqrt(freq) + self.smooth)
         else:
-            # uniform 
-            weights = torch.ones_like(class_counts)
+            # uniform - ensure on correct device
+            weights = torch.ones(self.num_classes, device=target.device, dtype=torch.float32)
         
         # Normalize weights to sum to num_classes
         weight_sum = weights.sum()
@@ -187,9 +187,13 @@ class ClassWeightedDiceLoss(nn.Module):
             weight_sum = weight_sum.as_tensor()
         weights = weights * self.num_classes / (weight_sum + self.smooth)
         
-        # Ensure return value is a regular tensor
+        # Ensure return value is a regular tensor on correct device
         if hasattr(weights, 'as_tensor'):
             weights = weights.as_tensor()
+        
+        # Final device check
+        if isinstance(weights, torch.Tensor) and weights.device != target.device:
+            weights = weights.to(target.device)
         
         return weights
     
@@ -234,6 +238,10 @@ class ClassWeightedDiceLoss(nn.Module):
         elif not isinstance(weights, torch.Tensor):
             weights = torch.tensor(weights, device=target.device, dtype=target.dtype)
         
+        # Ensure weights are on the same device as target
+        if isinstance(weights, torch.Tensor) and weights.device != target.device:
+            weights = weights.to(target.device)
+        
         # Compute per-class Dice
         # (B, C, H, W) -> (B, C, H*W)
         pred_flat = pred.view(pred.shape[0], pred.shape[1], -1)
@@ -250,8 +258,8 @@ class ClassWeightedDiceLoss(nn.Module):
         start_class = 1 if self.exclude_background else 0
         
         if self.exclude_background:
-            # Zero out background weight
-            weights = weights.clone()
+            # Zero out background weight - ensure clone is on correct device
+            weights = weights.clone().to(target.device)
             weights[0] = 0.0
         
         # Weighted average across classes, then average across batch
@@ -273,17 +281,22 @@ class ClassWeightedDiceLoss(nn.Module):
 
 class CombinedCEDiceLoss(nn.Module):
     """
-    Combined Cross-Entropy and class-weighted Dice loss.
+    Combined Cross-Entropy (or BCE) and class-weighted Dice loss.
     
-    Loss = alpha * CE + beta * Dice
+    Loss = alpha * CE/BCE + beta * Dice
+    
+    Supports both binary (BCE) and multi-class (CE) segmentation.
+    For binary segmentation (num_classes=2), automatically uses BCE for efficiency.
+    For multi-class (num_classes>2), uses Cross-Entropy.
     
     Args:
         num_classes: Number of segmentation classes
-        alpha: Weight for Cross-Entropy loss
+        alpha: Weight for Cross-Entropy/BCE loss
         beta: Weight for Dice loss
-        dice_weight_mode: Weighting strategy for Dice loss
+        dice_weight_mode: Weighting strategy for Dice loss ('uniform', 'inverse_freq', 'inverse_sqrt_freq')
         class_weights_ce: Optional class weights for CE loss
         exclude_background: Whether to exclude background from Dice
+        use_bce_for_binary: If True, use BCE for binary segmentation (default: True for efficiency)
     """
     
     def __init__(
@@ -294,29 +307,46 @@ class CombinedCEDiceLoss(nn.Module):
         dice_weight_mode: str = "inverse_sqrt_freq",
         class_weights_ce: Optional[List[float]] = None,
         exclude_background: bool = False,
+        use_bce_for_binary: bool = True,
     ):
         super().__init__()
         self.alpha = alpha
         self.beta = beta
+        self.num_classes = num_classes
+        self.use_bce = (num_classes == 2) and use_bce_for_binary
         
-        # Cross-Entropy loss
-        if class_weights_ce is not None:
-            ce_weights = torch.tensor(class_weights_ce, dtype=torch.float32)
-            self.ce_loss = nn.CrossEntropyLoss(weight=ce_weights)
+        # Choose BCE for binary, CE for multi-class
+        if self.use_bce:
+            # Binary segmentation: use BCE
+            self.ce_loss = nn.BCEWithLogitsLoss()
+            logging.info(f"CombinedCEDiceLoss: Using BCE for binary segmentation (num_classes=2)")
         else:
-            self.ce_loss = nn.CrossEntropyLoss()
+            # Multi-class segmentation: use Cross-Entropy
+            if class_weights_ce is not None:
+                ce_weights = torch.tensor(class_weights_ce, dtype=torch.float32)
+                self.ce_loss = nn.CrossEntropyLoss(weight=ce_weights)
+            else:
+                self.ce_loss = nn.CrossEntropyLoss()
+            logging.info(f"CombinedCEDiceLoss: Using Cross-Entropy for multi-class segmentation (num_classes={num_classes})")
         
-        # Dice loss
+        # Dice loss - use uniform weighting for binary, class-weighted for multi-class
+        if num_classes == 2 and dice_weight_mode == "inverse_sqrt_freq":
+            # For binary, uniform is more appropriate
+            dice_weight_mode_actual = "uniform"
+        else:
+            dice_weight_mode_actual = dice_weight_mode
+        
         self.dice_loss = ClassWeightedDiceLoss(
             num_classes=num_classes,
-            weight_mode=dice_weight_mode,
+            weight_mode=dice_weight_mode_actual,
             exclude_background=exclude_background,
             softmax=True,
         )
         
         logging.info(
             f"CombinedCEDiceLoss: alpha={alpha}, beta={beta}, "
-            f"dice_weight_mode={dice_weight_mode}"
+            f"dice_weight_mode={dice_weight_mode_actual}, "
+            f"exclude_background={exclude_background}"
         )
     
     def forward(
@@ -329,13 +359,36 @@ class CombinedCEDiceLoss(nn.Module):
             pred: (B, C, H, W) logits
             target: (B, C, H, W) one-hot or (B, H, W) class indices
         """
-        # Prepare target for CE (needs class indices)
-        if target.dim() == 4:
-            target_ce = torch.argmax(target, dim=1)
+        if self.use_bce:
+            # Binary segmentation: BCE expects (B, 1, H, W) or (B, H, W) predictions
+            # and (B, 1, H, W) or (B, H, W) targets
+            if pred.shape[1] == 2:
+                # Convert from 2-channel to single channel for BCE
+                # Use sigmoid on first channel (foreground probability)
+                pred_bce = pred[:, 0:1, :, :]  # (B, 1, H, W)
+            else:
+                pred_bce = pred  # Already single channel
+            
+            if target.dim() == 4:
+                # One-hot: extract foreground channel
+                if target.shape[1] == 2:
+                    target_bce = target[:, 1:2, :, :]  # (B, 1, H, W) - foreground channel
+                else:
+                    target_bce = target[:, 0:1, :, :]  # (B, 1, H, W)
+            else:
+                # Class indices: convert to binary mask (1 for foreground)
+                target_bce = (target > 0).float().unsqueeze(1)  # (B, 1, H, W)
+            
+            ce = self.ce_loss(pred_bce, target_bce)
         else:
-            target_ce = target
+            # Multi-class segmentation: Cross-Entropy needs class indices
+            if target.dim() == 4:
+                target_ce = torch.argmax(target, dim=1)
+            else:
+                target_ce = target
+            
+            ce = self.ce_loss(pred, target_ce)
         
-        ce = self.ce_loss(pred, target_ce)
         dice = self.dice_loss(pred, target)
         
         return self.alpha * ce + self.beta * dice
