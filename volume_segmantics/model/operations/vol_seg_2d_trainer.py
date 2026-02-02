@@ -245,7 +245,10 @@ class VolSeg2dTrainer:
             model_device_num=self.model_device_num,
             label_no=self.label_no,
         )
-        self.model_struc_dict = self.model_manager.get_model_structure_dict(settings)
+        # Pass data directory to determine in_channels from actual data
+        self.model_struc_dict = self.model_manager.get_model_structure_dict(
+            settings, data_dir=image_dir_path
+        )
         
         # Multi-task configuration
         self.use_multitask = getattr(settings, "use_multitask", False)

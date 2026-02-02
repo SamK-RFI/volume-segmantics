@@ -18,6 +18,13 @@ import torch.nn as nn
 from torch.nn import DataParallel
 from torchvision import models
 
+try:
+    import imageio
+    import cv2
+    IMAGE_IO_AVAILABLE = True
+except ImportError:
+    IMAGE_IO_AVAILABLE = False
+
 from volume_segmantics.model.model_2d import create_model_on_device
 from volume_segmantics.model.mean_teacher import MeanTeacherModel
 from volume_segmantics.model.sam import SAM
@@ -60,12 +67,82 @@ class ModelManager:
         if self.use_semi_supervised:
             self.ema_decay = getattr(settings, "ema_decay", 0.99)
     
-    def get_model_structure_dict(self, settings: SimpleNamespace) -> dict:
+    def _determine_in_channels_from_data(
+        self, data_dir: Path = None, settings: SimpleNamespace = None
+    ) -> int:
+        """
+        Determine number of input channels from actual data.
+        
+        Args:
+            data_dir: Path to directory containing training images
+            settings: Training settings (for use_2_5d_slicing and num_slices)
+        
+        Returns:
+            Number of input channels, or None if cannot be determined
+        """
+        if data_dir is None or not data_dir.exists():
+            return None
+        
+        if not IMAGE_IO_AVAILABLE:
+            logging.warning("imageio or cv2 not available, cannot determine in_channels from data")
+            return None
+        
+        try:
+            # Find first image file
+            image_files = []
+            for ext in ['.png', '.tiff', '.tif']:
+                image_files.extend(list(data_dir.glob(f'*{ext}')))
+                image_files.extend(list(data_dir.glob(f'*{ext.upper()}')))
+            
+            if not image_files:
+                return None
+            
+            # Load first image to determine channels
+            
+            image_path = image_files[0]
+            file_extension = image_path.suffix.lower()
+            
+            if file_extension in ['.tiff', '.tif']:
+                # Read TIFF files (can have multiple channels)
+                image = imageio.imread(str(image_path))
+                # Ensure image is in the correct format (H, W, C)
+                if len(image.shape) == 2:
+                    # Grayscale
+                    return 1
+                elif len(image.shape) == 3:
+                    # Multi-channel (H, W, C)
+                    return image.shape[2]
+                else:
+                    return None
+            else:
+                # PNG files
+                use_2_5d = getattr(settings, 'use_2_5d_slicing', False) if settings else False
+                if use_2_5d:
+                    # Read as color (RGB-equivalent) when using 2.5D PNG slices
+                    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                    if image is not None:
+                        return image.shape[2]  # Should be 3 for RGB
+                else:
+                    # Read as grayscale for 2D slicing
+                    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+                    if image is not None:
+                        return 1
+            
+            return None
+        except Exception as e:
+            logging.warning(f"Could not determine in_channels from data: {e}")
+            return None
+    
+    def get_model_structure_dict(
+        self, settings: SimpleNamespace, data_dir: Path = None
+    ) -> dict:
         """
         Get model structure dictionary from settings.
         
         Args:
             settings: Training settings
+            data_dir: Optional path to directory containing training images
+                     (if provided, in_channels will be determined from actual data)
         
         Returns:
             Model structure dictionary
@@ -86,7 +163,42 @@ class ModelManager:
             model_type = utils.get_model_type(settings)
         
         model_struc_dict["type"] = model_type
-        model_struc_dict["in_channels"] = cfg.get_model_input_channels(settings)
+        
+        # Try to determine in_channels from actual data first
+        in_channels_from_data = self._determine_in_channels_from_data(data_dir, settings)
+        if in_channels_from_data is not None:
+            model_struc_dict["in_channels"] = in_channels_from_data
+            logging.info(
+                f"Determined in_channels={in_channels_from_data} from actual data "
+                f"(file: {data_dir})"
+            )
+        else:
+            # Fall back to settings-based determination
+            in_channels_from_settings = cfg.get_model_input_channels(settings)
+            # Check if explicitly set in model config (for backward compatibility)
+            if "in_channels" in model_struc_dict:
+                in_channels_explicit = model_struc_dict["in_channels"]
+                if in_channels_explicit != in_channels_from_settings:
+                    logging.info(
+                        f"Using in_channels={in_channels_explicit} from model config "
+                        f"(settings-based would be {in_channels_from_settings})"
+                    )
+                    model_struc_dict["in_channels"] = in_channels_explicit
+                else:
+                    model_struc_dict["in_channels"] = in_channels_from_settings
+                    logging.info(
+                        f"Using in_channels={in_channels_from_settings} from settings "
+                        f"(use_2_5d_slicing={getattr(settings, 'use_2_5d_slicing', False)}, "
+                        f"num_slices={getattr(settings, 'num_slices', 3)})"
+                    )
+            else:
+                model_struc_dict["in_channels"] = in_channels_from_settings
+                logging.info(
+                    f"Using in_channels={in_channels_from_settings} from settings "
+                    f"(use_2_5d_slicing={getattr(settings, 'use_2_5d_slicing', False)}, "
+                    f"num_slices={getattr(settings, 'num_slices', 3)})"
+                )
+        
         model_struc_dict["classes"] = self.label_no
         
         if use_multitask:
@@ -170,6 +282,19 @@ class ModelManager:
             f"{total_params:,} total parameters."
         )
         
+        # Determine if we should use differential learning rates
+        # Use differential LR when encoder is unfrozen (not frozen) and encoder_lr_multiplier is set
+        use_differential_lr = False
+        encoder_lr_multiplier = 0.1  # Default: encoder LR is 10x lower
+        
+        if not frozen and hasattr(self.settings, 'encoder_lr_multiplier'):
+            if self.settings.encoder_lr_multiplier is not None:
+                use_differential_lr = True
+                encoder_lr_multiplier = float(self.settings.encoder_lr_multiplier)
+                logging.info(
+                    f"Using differential learning rates: encoder_lr_multiplier={encoder_lr_multiplier}"
+                )
+        
         # Create optimizer - only update student parameters if using semi-supervised
         if use_semi_supervised:
             # Get student parameters (unwrap DataParallel if needed)
@@ -187,7 +312,13 @@ class ModelManager:
                     adaptive=self.adaptive_sam
                 )
             else:
-                optimizer = self.create_optimizer(model, learning_rate, params=student_params)
+                optimizer = self.create_optimizer(
+                    model, 
+                    learning_rate, 
+                    params=student_params,
+                    use_differential_lr=use_differential_lr,
+                    encoder_lr_multiplier=encoder_lr_multiplier
+                )
         else:
             if self.use_sam:
                 base_optimizer = torch.optim.AdamW
@@ -198,7 +329,12 @@ class ModelManager:
                     adaptive=self.adaptive_sam
                 )
             else:
-                optimizer = self.create_optimizer(model, learning_rate)
+                optimizer = self.create_optimizer(
+                    model, 
+                    learning_rate,
+                    use_differential_lr=use_differential_lr,
+                    encoder_lr_multiplier=encoder_lr_multiplier
+                )
         
         logging.info("Model and optimizer created.")
         return model, optimizer
@@ -299,22 +435,96 @@ class ModelManager:
         self,
         model: nn.Module,
         learning_rate: float,
-        params=None
+        params=None,
+        use_differential_lr: bool = False,
+        encoder_lr_multiplier: float = 0.1
     ):
         """
         Create optimizer for model.
         
         Args:
             model: Model to create optimizer for
-            learning_rate: Learning rate
+            learning_rate: Learning rate (base LR for decoder/head when use_differential_lr=True)
             params: Optional parameter group (if None, uses model.parameters())
+            use_differential_lr: If True, use different LR for encoder vs decoder/head
+            encoder_lr_multiplier: Multiplier for encoder LR (encoder_lr = learning_rate * encoder_lr_multiplier)
         
         Returns:
             Optimizer
         """
         if params is None:
             params = model.parameters()
-        return torch.optim.AdamW(params, lr=learning_rate)
+        
+        if use_differential_lr:
+            # Separate encoder and decoder/head parameters
+            encoder_params = []
+            decoder_params = []
+            head_params = []
+            
+            # Unwrap DataParallel if needed
+            model_to_check = model.module if isinstance(model, DataParallel) else model
+            
+            # If params is provided (e.g., from MeanTeacher), create a set for fast lookup
+            params_set = set(params) if params is not None else None
+            
+            for name, param in model_to_check.named_parameters():
+                if param.requires_grad:
+                    # If params was provided, only include parameters that are in the provided set
+                    if params_set is not None and param not in params_set:
+                        continue
+                    
+                    if "encoder" in name:
+                        encoder_params.append(param)
+                    elif "head" in name or "heads" in name:
+                        head_params.append(param)
+                    else:
+                        # Decoder and other components
+                        decoder_params.append(param)
+            
+            # Create parameter groups with different learning rates
+            param_groups = []
+            if encoder_params:
+                encoder_lr = learning_rate * encoder_lr_multiplier
+                param_groups.append({
+                    'params': encoder_params,
+                    'lr': encoder_lr,
+                    'name': 'encoder'
+                })
+                logging.info(
+                    f"Encoder LR: {encoder_lr:.2e} "
+                    f"({len(encoder_params)} parameter groups, {sum(p.numel() for p in encoder_params):,} params)"
+                )
+            
+            if decoder_params:
+                param_groups.append({
+                    'params': decoder_params,
+                    'lr': learning_rate,
+                    'name': 'decoder'
+                })
+                logging.info(
+                    f"Decoder LR: {learning_rate:.2e} "
+                    f"({len(decoder_params)} parameter groups, {sum(p.numel() for p in decoder_params):,} params)"
+                )
+            
+            if head_params:
+                param_groups.append({
+                    'params': head_params,
+                    'lr': learning_rate,
+                    'name': 'head'
+                })
+                logging.info(
+                    f"Head LR: {learning_rate:.2e} "
+                    f"({len(head_params)} parameter groups, {sum(p.numel() for p in head_params):,} params)"
+                )
+            
+            if not param_groups:
+                # Fallback: use all parameters with base LR
+                logging.warning("No parameter groups found, using all parameters with base LR")
+                return torch.optim.AdamW(params, lr=learning_rate)
+            
+            return torch.optim.AdamW(param_groups)
+        else:
+            return torch.optim.AdamW(params, lr=learning_rate)
     
     def create_onecycle_lr_scheduler(
         self,

@@ -17,10 +17,19 @@ from segmentation_models_pytorch.decoders.unet.decoder import UnetDecoder
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import volume_segmantics.utilities.base_data_utils as utils
 from torch.nn import DataParallel
 import volume_segmantics.utilities.config as cfg
 from volume_segmantics.model.vanilla_unet import UNet as VanillaUNet
+
+# Import DINO encoder (registration happens automatically in dino_encoder.py)
+try:
+    from volume_segmantics.model.encoders import DINOEncoder
+    DINO_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"DINO encoder not available: {e}")
+    DINO_AVAILABLE = False
 
 
 @dataclass
@@ -85,11 +94,27 @@ class MultitaskSegmentationModel(SegmentationModel):
         decoder_outputs: dict = {}
         
         masks = []
+        # Store input size for adaptive upsampling (needed for DINO encoders)
+        input_h, input_w = x.shape[2], x.shape[3]
+        
         for head_idx, head in enumerate(self.heads):
             dec_idx = self.head_to_decoder[head_idx]
             if dec_idx not in decoder_outputs:
                 decoder_outputs[dec_idx] = self.decoders[dec_idx](features)
-            masks.append(head(decoder_outputs[dec_idx]))
+            mask = head(decoder_outputs[dec_idx])
+            
+            # Adaptive upsampling for DINO encoders: upsample to match input size
+            # DINO outputs at reduced resolution (input_size // patch_size)
+            # Check if mask size doesn't match input size
+            if mask.shape[2] != input_h or mask.shape[3] != input_w:
+                mask = F.interpolate(
+                    mask,
+                    size=(input_h, input_w),
+                    mode='bilinear',
+                    align_corners=False
+                )
+            
+            masks.append(mask)
         
         if self.classification_head is not None:
             labels = self.classification_head(features[-1])
@@ -203,13 +228,57 @@ class MultitaskUnet(MultitaskSegmentationModel):
         self.head_to_decoder = [idx_remap[h.decoder_idx] for h in parsed_heads]
         
         # Build encoder
-        self.encoder = get_encoder(
-            encoder_name,
-            in_channels=in_channels,
-            depth=encoder_depth,
-            weights=encoder_weights,
-            **kwargs,
-        )
+        # Check if this is a DINO encoder
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        
+        if is_dino:
+            # Use DINOEncoder directly (bypasses SMP's get_encoder)
+            if not DINO_AVAILABLE:
+                raise RuntimeError(
+                    f"DINO encoder requested ({encoder_name}) but DINOEncoder is not available. "
+                    f"Please ensure volume_segmantics.model.encoders can be imported."
+                )
+            
+            # DINO encoders typically use depth=4
+            dino_depth = encoder_depth if encoder_depth <= 4 else 4
+            if encoder_depth != dino_depth:
+                logging.info(f"Adjusting DINO encoder depth from {encoder_depth} to {dino_depth}")
+            
+            # Determine DINO version and weights source
+            if encoder_name.startswith('dinov3_'):
+                weights_source = 'dinov3' if encoder_weights in ['dinov3', None, 'None'] else encoder_weights
+            else:
+                weights_source = 'dinov2' if encoder_weights in ['dinov2', None, 'None'] else encoder_weights
+            
+            self.encoder = DINOEncoder(
+                model_name=encoder_name,
+                in_channels=in_channels,
+                depth=dino_depth,
+                weights=weights_source,
+                pretrained=(encoder_weights not in [None, 'None', False]),
+                **kwargs,
+            )
+            # Update encoder_depth for decoder construction
+            encoder_depth = dino_depth
+            # Adjust decoder_channels to match encoder_depth if needed
+            if len(decoder_channels) != encoder_depth:
+                if encoder_depth == 4:
+                    # Default for depth=4: (256, 128, 64, 32)
+                    decoder_channels = (256, 128, 64, 32)
+                    logging.info(f"Adjusting decoder_channels to {decoder_channels} for DINO depth={encoder_depth}")
+                else:
+                    # Take first encoder_depth elements
+                    decoder_channels = decoder_channels[:encoder_depth]
+                    logging.info(f"Truncating decoder_channels to {decoder_channels} for encoder_depth={encoder_depth}")
+        else:
+            # Use standard SMP encoder
+            self.encoder = get_encoder(
+                encoder_name,
+                in_channels=in_channels,
+                depth=encoder_depth,
+                weights=encoder_weights,
+                **kwargs,
+            )
         
         # Build decoders
         add_center_block = encoder_name.startswith("vgg")
@@ -238,12 +307,40 @@ class MultitaskUnet(MultitaskSegmentationModel):
         ])
         
         # Build segmentation heads
+        # UnetDecoder with n_blocks outputs decoder_channels[n_blocks-2] channels
+        # For n_blocks=4 and decoder_channels=[256, 128, 64, 32], output is 64 (index 2)
+        # So we use decoder_channels[encoder_depth-2] or decoder_channels[-2] if lengths match
+        if len(decoder_channels) == encoder_depth:
+            # When decoder_channels length matches encoder_depth, output is second-to-last
+            head_in_channels = decoder_channels[-2]
+        else:
+            # Fallback: use last element (shouldn't happen with our setup)
+            head_in_channels = decoder_channels[-1]
+        
+        # Calculate upsampling factor for DINO encoders
+        # DINO outputs features at reduced resolution (input_size // patch_size)
+        # We need to upsample to match input resolution
+        head_upsampling = None
+        if is_dino:
+            # For DINO, feature maps are at (H // patch_size, W // patch_size)
+            # For typical 256×256 input with patch_size=14: 256//14 = 18
+            # To get back to ~256, we need ~14x upsampling
+            # SegmentationHead upsampling is typically 2^upsampling_factor
+            # 2^4 = 16x gets us close (18×16 = 288, close to 256)
+            # The head will do adaptive upsampling to match exact input size
+            patch_size = getattr(self.encoder, 'patch_size', 14)
+            # Calculate approximate upsampling factor: log2(input_size / feature_size)
+            # For 256 input and patch_size=14: log2(256/18) ? log2(14.2) ? 3.8, so use 4
+            head_upsampling = 4
+            logging.info(f"Setting head upsampling to {head_upsampling} for DINO encoder (patch_size={patch_size})")
+        
         self.heads = nn.ModuleList([
             SegmentationHead(
-                in_channels=decoder_channels[-1],
+                in_channels=head_in_channels,
                 out_channels=cfg.classes,
                 activation=cfg.activation,
                 kernel_size=cfg.kernel_size,
+                upsampling=head_upsampling,
             )
             for cfg in parsed_heads
         ])
@@ -267,40 +364,167 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
     encoder_weights = struct_dict_copy.get("encoder_weights", None)
     
     if model_type == utils.ModelType.U_NET:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        
         if struct_dict_copy['encoder_name'] in {'convnext_base', 'convnext_large', 'swin_base_patch4_window12_384'}:
             model = smp.Unet(**struct_dict_copy, encoder_depth=4,
                 decoder_channels=(256, 128, 64, 32),
                 head_upsampling=2,)
+        elif is_dino:
+            # DINO encoders: use depth=4 and adjust decoder channels
+            # If registration failed, create encoder directly and pass it
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            encoder_weights_param = struct_dict_copy.get('encoder_weights', 'dinov2')
+            in_channels_param = struct_dict_copy.get('in_channels', 3)
+            # Remove encoder_depth from struct_dict_copy to avoid duplicate keyword argument
+            struct_dict_copy.pop('encoder_depth', None)
+            
+            # Determine DINO version from encoder name
+            if encoder_name.startswith('dinov3_'):
+                weights_source = 'dinov3' if encoder_weights_param in ['dinov3', None, 'None'] else encoder_weights_param
+            else:
+                weights_source = 'dinov2' if encoder_weights_param in ['dinov2', None, 'None'] else encoder_weights_param
+            
+            # Try to create model with encoder_name first (if registration worked)
+            try:
+                model = smp.Unet(**struct_dict_copy, encoder_depth=dino_depth,
+                    decoder_channels=(256, 128, 64, 32) if dino_depth == 4 else (256, 128, 64, 32, 16),
+                    head_upsampling=2,)
+            except (ValueError, KeyError, AttributeError) as e:
+                # Registration failed, create encoder directly
+                if DINO_AVAILABLE:
+                    logging.info(f"DINO encoder not registered with smp, creating directly: {e}")
+                    dino_encoder = DINOEncoder(
+                        model_name=encoder_name,
+                        in_channels=in_channels_param,
+                        depth=dino_depth,
+                        weights=weights_source,
+                        pretrained=(encoder_weights_param not in [None, 'None', False])
+                    )
+                    # Create model with encoder parameter instead of encoder_name
+                    struct_dict_copy_no_encoder = struct_dict_copy.copy()
+                    struct_dict_copy_no_encoder.pop('encoder_name', None)
+                    struct_dict_copy_no_encoder.pop('encoder_weights', None)
+                    model = smp.Unet(
+                        encoder=dino_encoder,
+                        encoder_depth=dino_depth,
+                        decoder_channels=(256, 128, 64, 32) if dino_depth == 4 else (256, 128, 64, 32, 16),
+                        head_upsampling=2,
+                        **struct_dict_copy_no_encoder
+                    )
+                else:
+                    raise RuntimeError(f"DINO encoder not available and registration failed: {e}")
         else:
             model = smp.Unet(**struct_dict_copy)
         logging.info(f"Sending the U-Net model to device {device_num}")
     elif model_type == utils.ModelType.U_NET_PLUS_PLUS:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        
         if struct_dict_copy['encoder_name'] in {'convnext_base', 'convnext_large', 'swin_base_patch4_window12_384'}:
             model = smp.UnetPlusPlus(**struct_dict_copy, encoder_depth=4,
                 decoder_channels=(256, 128, 64, 32),
                 head_upsampling=2,)
+        elif is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            encoder_weights_param = struct_dict_copy.get('encoder_weights', 'dinov2')
+            in_channels_param = struct_dict_copy.get('in_channels', 3)
+            # Remove encoder_depth from struct_dict_copy to avoid duplicate keyword argument
+            struct_dict_copy.pop('encoder_depth', None)
+            
+            # Determine DINO version from encoder name
+            if encoder_name.startswith('dinov3_'):
+                weights_source = 'dinov3' if encoder_weights_param in ['dinov3', None, 'None'] else encoder_weights_param
+            else:
+                weights_source = 'dinov2' if encoder_weights_param in ['dinov2', None, 'None'] else encoder_weights_param
+            
+            # Try to create model with encoder_name first (if registration worked)
+            try:
+                model = smp.UnetPlusPlus(**struct_dict_copy, encoder_depth=dino_depth,
+                    decoder_channels=(256, 128, 64, 32) if dino_depth == 4 else (256, 128, 64, 32, 16),
+                    head_upsampling=2,)
+            except (ValueError, KeyError, AttributeError) as e:
+                # Registration failed, create encoder directly
+                if DINO_AVAILABLE:
+                    logging.info(f"DINO encoder not registered with smp, creating directly: {e}")
+                    dino_encoder = DINOEncoder(
+                        model_name=encoder_name,
+                        in_channels=in_channels_param,
+                        depth=dino_depth,
+                        weights=weights_source,
+                        pretrained=(encoder_weights_param not in [None, 'None', False])
+                    )
+                    # Create model with encoder parameter instead of encoder_name
+                    struct_dict_copy_no_encoder = struct_dict_copy.copy()
+                    struct_dict_copy_no_encoder.pop('encoder_name', None)
+                    struct_dict_copy_no_encoder.pop('encoder_weights', None)
+                    model = smp.UnetPlusPlus(
+                        encoder=dino_encoder,
+                        encoder_depth=dino_depth,
+                        decoder_channels=(256, 128, 64, 32) if dino_depth == 4 else (256, 128, 64, 32, 16),
+                        head_upsampling=2,
+                        **struct_dict_copy_no_encoder
+                    )
+                else:
+                    raise RuntimeError(f"DINO encoder not available and registration failed: {e}")
         else:
             model = smp.UnetPlusPlus(**struct_dict_copy)
         logging.info(f"Sending the U-Net++ model to device {device_num}")
     elif model_type == utils.ModelType.FPN:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.FPN(**struct_dict_copy)
         logging.info(f"Sending the FPN model to device {device_num}")
     elif model_type == utils.ModelType.DEEPLABV3:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.DeepLabV3(**struct_dict_copy)
         logging.info(f"Sending the DeepLabV3 model to device {device_num}")
     elif model_type == utils.ModelType.DEEPLABV3_PLUS:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.DeepLabV3Plus(**struct_dict_copy)
         logging.info(f"Sending the DeepLabV3+ model to device {device_num}")
     elif model_type == utils.ModelType.MA_NET:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.MAnet(**struct_dict_copy)
         logging.info(f"Sending the MA-Net model to device {device_num}")
     elif model_type == utils.ModelType.LINKNET:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.Linknet(**struct_dict_copy)
         logging.info(f"Sending the Linknet model to device {device_num}")
     elif model_type == utils.ModelType.PAN:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.PAN(**struct_dict_copy)
         logging.info(f"Sending the PAN model to device {device_num}")
     elif model_type == utils.ModelType.SEGFORMER:
+        encoder_name = struct_dict_copy.get('encoder_name', '')
+        is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+        if is_dino:
+            dino_depth = struct_dict_copy.get('encoder_depth', 4)
+            struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.Segformer(**struct_dict_copy)
         logging.info(f"Sending the Segformer model to device {device_num}")
     elif model_type == utils.ModelType.VANILLA_UNET:
@@ -342,8 +566,12 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
         logging.info(f"Sending the Multitask U-Net model to device {device_num}")
 
     # If using pretrained weights with >3 input channels, adapt first conv by averaging RGB.
+    # Skip this for DINO encoders as they handle channel adaptation internally
+    encoder_name = struct_dict_copy.get('encoder_name', '')
+    is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+    
     try:
-        if encoder_weights and encoder_weights != "None" and in_channels_requested > 3:
+        if encoder_weights and encoder_weights != "None" and in_channels_requested > 3 and not is_dino:
             _adapt_first_conv_from_imagenet_avg(model, model_type, struct_dict_copy, in_channels_requested)
     except Exception as e:
         logging.warning(f"Could not adapt first conv weights for in_channels={in_channels_requested}: {e}")
@@ -452,7 +680,15 @@ def _adapt_first_conv_from_imagenet_avg(model: torch.nn.Module, model_type, stru
     """When using pretrained encoders and in_channels > 3, adapt the first conv layer weights by
     averaging the 3-channel Imagenet weights and repeating to match the requested channel count.
     This keeps the rest of the encoder on pretrained weights while providing a better init.
+    
+    Note: DINO encoders handle channel adaptation internally, so this function is skipped for them.
     """
+    
+    # Skip DINO encoders as they handle channel adaptation internally
+    encoder_name = struct_dict_copy.get('encoder_name', '')
+    is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
+    if is_dino:
+        return
     
     if not hasattr(model, 'encoder'):
         return
