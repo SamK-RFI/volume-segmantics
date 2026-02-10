@@ -120,11 +120,11 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     self.data_vol
                 )
             elif output_entropy and not output_probs:
-                prediction, _, entropy = self.predictor._prediction_estimate_entropy(
+                prediction, _, entropy, votes = self.predictor._prediction_estimate_entropy(
                     self.data_vol
                 )
             elif output_entropy and output_probs:
-                prediction, probs, entropy = self.predictor._prediction_estimate_entropy(
+                prediction, probs, entropy, votes = self.predictor._prediction_estimate_entropy(
                     self.data_vol
                 )
 
@@ -150,6 +150,12 @@ class VolSeg2DPredictionManager(BaseDataManager):
                     f"{output_path.parent / output_path.stem}_entropy.h5",
                     chunking=self.input_data_chunking,
                 )
+                utils.save_data_to_hdf5(
+                    votes,
+                    f"{output_path.parent / output_path.stem}_votes.h5",
+                    chunking=self.input_data_chunking,
+                )
+
         return prediction
 
 
