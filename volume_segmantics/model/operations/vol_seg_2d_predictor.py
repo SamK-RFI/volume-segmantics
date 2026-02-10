@@ -304,7 +304,9 @@ class VolSeg2dPredictor:
 
                 output_vol_list.append(labels)
                 if output_probs:
-                    output_prob_list.append(probs)
+                    probs = utils.crop_tensor_to_array(probs, yx_dims)
+                    output_prob_list.append(probs.astype(np.float16))
+                    logits = utils.crop_tensor_to_array(output, yx_dims)
                     output_logits_list.append(logits)
 
         labels = np.concatenate(output_vol_list)
@@ -317,6 +319,7 @@ class VolSeg2dPredictor:
         if probs is not None:
             probs = self._crop_2_5d_output(probs, pad_width)
             probs = utils.rotate_array_to_axis(probs, axis)
+            probs = np.moveaxis(probs, 1, -1)
 
         if logits is not None:
             logits = self._crop_2_5d_output(logits, pad_width)
@@ -547,14 +550,14 @@ class VolSeg2dPredictor:
     def _predict_Zonly_generator(self, data_vol):
             for k in range(4):
                 no_flip = np.ascontiguousarray(np.rot90(data_vol, k, axes=(1, 2)))
-                for flip_count in range(-1, 3):
+                for flip_axis in range(-1, 3):
                     # No flips
-                    if flip_count == -1:
-                        labels, probs, logits = self._predict_single_axis(data_vol=no_flip, output_probs=True, axis=Axis.Z)
-                        yield np.rot90(labels, -k, axes=(1, 2))
+                    if flip_axis == -1:
+                        labels, probs, _ = self._predict_single_axis(data_vol=no_flip, output_probs=True, axis=Axis.Z)
+                        yield np.rot90(labels, -k, axes=(1, 2)), np.rot90(probs, -k, axes=(1, 2))
                     else:
-                        labels, probs, _ = self._predict_single_axis(data_vol=np.flip(no_flip, flip_count), output_probs=False, axis=Axis.Z)
-                        yield np.rot90(np.flip(labels, flip_count), -k, axes=(1, 2))
+                        labels, probs, _ = self._predict_single_axis(data_vol=np.flip(no_flip, flip_axis), output_probs=True, axis=Axis.Z)
+                        yield np.rot90(np.flip(labels, flip_axis), -k, axes=(1, 2)), np.rot90(np.flip(probs, flip_axis), -k, axes=(1, 2))
 
 
     def _convert_labels_map_to_count(self, labels_vol):
@@ -584,7 +587,8 @@ class VolSeg2dPredictor:
             raise ValueError("Error in vol_seg_2d_predictor._prediction_estimate_entropy: Entropy calculation must be done with a minimum prediction quality of medium.")
 
         logging.info("Collecting voting distributions:")
-        probs_matrix = np.zeros((self.num_labels, *data_vol.shape), dtype=np.uint8)
+        counts_matrix = np.zeros((self.num_labels, *data_vol.shape), dtype=np.uint8)
+        probs_matrix = np.zeros((*data_vol.shape, self.num_labels))
         if self.settings.quality=="medium":
             g = self._predict_3_ways_generator(data_vol)
             curr_counts, labels_list = self._convert_labels_map_to_count(data_vol)
@@ -610,32 +614,34 @@ class VolSeg2dPredictor:
             g = self._predict_Zonly_generator(data_vol)
             for i in range(16):
                 logging.info(f"Voter {i+1} of 16 voting...")
-                labels = next(g)
+                labels, probs = next(g)
                 logging.info(f"Converting votes...")
                 curr_counts, labels_list = self._convert_labels_map_to_count(labels)
                 for idx, curr_label in enumerate(curr_counts):
-                    probs_matrix[labels_list[idx]] += curr_label
+                    counts_matrix[labels_list[idx]] += curr_label
+                probs_matrix += probs
+            probs_matrix = np.moveaxis(probs_matrix, -1, 0)
 
         logging.info("Aggregating prediction votes:")
-        probs_matrix_contig = np.ascontiguousarray(probs_matrix)
-        full_prediction_labels = np.argmax(probs_matrix_contig, axis=0)
+        counts_matrix_contig = np.ascontiguousarray(counts_matrix)
+
+        full_prediction_labels = np.argmax(probs_matrix, axis=0)
         full_prediction_probs = np.squeeze(
-            np.take_along_axis(probs_matrix_contig, full_prediction_labels[np.newaxis, ...], axis=0)
+            np.take_along_axis(counts_matrix_contig, full_prediction_labels[np.newaxis, ...], axis=0)
         )
 
         if self.settings.quality=="medium":
             full_prediction_probs = full_prediction_probs.astype(float) / 3
-        else:
-            full_prediction_probs = full_prediction_probs.astype(float) / 12
-
+        elif self.settings.quality=="z_only":
+            full_prediction_probs = probs_matrix * .0625
         logging.info("Calculating prediction entropy (regularised) from voting distributions:")
         entropy_matrix = np.empty(data_vol.shape)
         for curr_slice in range(len(data_vol)):
-            entropy_matrix[curr_slice] = entropy(probs_matrix_contig[:, curr_slice, ...], axis=0)
+            entropy_matrix[curr_slice] = entropy(counts_matrix_contig[:, curr_slice, ...], axis=0)
         entropy_matrix /= entropy(np.full((len(np.unique(full_prediction_labels)),),
                                           1/len(np.unique(full_prediction_labels))))
 
-        return full_prediction_labels, full_prediction_probs, entropy_matrix
+        return full_prediction_labels, full_prediction_probs, entropy_matrix, counts_matrix_contig
 
 
 class VolSeg2dImageDirPredictor:
