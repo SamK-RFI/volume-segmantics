@@ -217,7 +217,7 @@ class VolSeg2dPredictor:
         # Get max probs
         max_prob_idx = torch.argmax(probs, dim=1, keepdim=True)
         max_probs = torch.gather(probs, 1, max_prob_idx).squeeze(1)
-        probs_np = utils.crop_tensor_to_array(max_probs, yx_dims).astype(np.float16)
+        probs_np = utils.crop_tensor_to_array(probs, yx_dims).astype(np.float16)
 
         logits_np = utils.crop_tensor_to_array(output, yx_dims)
 
@@ -308,10 +308,7 @@ class VolSeg2dPredictor:
                 if output_probs:
                     probs = utils.crop_tensor_to_array(probs, yx_dims)
                     output_prob_list.append(probs.astype(np.float16))
-                    logits = utils.crop_tensor_to_array(output, yx_dims)
-                    output_logits_list.append(logits)
-
-                    logits = utils.crop_tensor_to_array(output, yx_dims)
+                    logits = utils.crop_tensor_to_array(logits, yx_dims)
                     output_logits_list.append(logits)
 
         labels = np.concatenate(output_vol_list)

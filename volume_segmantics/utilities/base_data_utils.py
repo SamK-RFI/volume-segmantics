@@ -136,7 +136,9 @@ def get_batch_size(settings: SimpleNamespace, prediction: bool = False) -> int:
     return batch_size
 
 
-def crop_tensor_to_array(tensor: torch.Tensor, yx_dims: List[int]) -> np.array:
+def crop_tensor_to_array(tensor: Union[torch.Tensor, np.ndarray], yx_dims: List[int]) -> np.array:
+    if isinstance(tensor, np.ndarray):
+        tensor = torch.from_numpy(tensor)
     if tensor.is_cuda:
         tensor = tensor.cpu()
     tensor = F.center_crop(tensor, yx_dims)
