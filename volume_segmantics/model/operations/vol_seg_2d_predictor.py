@@ -39,6 +39,8 @@ class VolSeg2dPredictor:
 
         self.use_2_5d_prediction = getattr(settings, 'use_2_5d_prediction', False)
 
+        self.use_2_5d_prediction = getattr(settings, 'use_2_5d_prediction', False)
+
         self.use_sliding_window = getattr(settings, 'use_sliding_window', False)
         self.sw_roi_size = getattr(settings, 'sw_roi_size', (512, 512))
         self.sw_overlap = getattr(settings, 'sw_overlap', 0.25)
@@ -309,6 +311,9 @@ class VolSeg2dPredictor:
                     logits = utils.crop_tensor_to_array(output, yx_dims)
                     output_logits_list.append(logits)
 
+                    logits = utils.crop_tensor_to_array(output, yx_dims)
+                    output_logits_list.append(logits)
+
         labels = np.concatenate(output_vol_list)
         labels = self._crop_2_5d_output(labels, pad_width)
         labels = utils.rotate_array_to_axis(labels, axis)
@@ -491,6 +496,24 @@ class VolSeg2dPredictor:
                     }
             self._last_additional_tasks = final_task_outputs
 
+        return label_container[0], prob_container[0]
+
+    def _predict_Zonly_max_probs(self, data_vol):
+        shape_tup = data_vol.shape
+        logging.info("Creating empty data volumes in RAM to combine 12 way prediction.")
+        label_container = np.empty((2, *shape_tup), dtype=np.uint8)
+        prob_container = np.empty((2, *shape_tup), dtype=np.float16)
+        label_container[0], prob_container[0] = self._predict_single_axis(data_vol)
+        for k in range(1, 4):
+            logging.info(f"Rotating volume {k * 90} degrees")
+            data_vol = np.rot90(data_vol)
+            labels, probs = self._predict_single_axis(data_vol)
+            label_container[1] = np.rot90(labels, -k)
+            prob_container[1] = np.rot90(probs, -k)
+            logging.info(
+                f"Merging rot {k * 90} deg volume with rot {(k-1) * 90} deg volume."
+            )
+            self._merge_vols_in_mem(prob_container, label_container)
         return label_container[0], prob_container[0]
 
     def _predict_Zonly_max_probs(self, data_vol):

@@ -29,4 +29,3 @@ sw_roi_size: [512, 512]          # Window size [H, W]
 sw_overlap: 0.25                 # Overlap ratio between windows (0.0 - 1.0)
 sw_batch_size: 4                 # Number of windows to process in parallel
 sw_mode: gaussian                # Weighting mode: 'gaussian' or 'constant'
-

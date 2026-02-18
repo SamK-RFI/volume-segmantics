@@ -357,6 +357,12 @@ class MultitaskUnet(MultitaskSegmentationModel):
         self.initialize()
 
 
+import torch
+import torch.nn as nn
+import volume_segmantics.utilities.base_data_utils as utils
+from torch.nn import DataParallel
+import volume_segmantics.utilities.config as cfg
+
 def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.Module:
     struct_dict_copy = model_struc_dict.copy()
     model_type = struct_dict_copy.pop("type")
@@ -510,7 +516,6 @@ def create_model_on_device(device_num: int, model_struc_dict: dict) -> torch.nn.
             dino_depth = struct_dict_copy.get('encoder_depth', 4)
             struct_dict_copy['encoder_depth'] = dino_depth
         model = smp.Linknet(**struct_dict_copy)
-        logging.info(f"Sending the Linknet model to device {device_num}")
     elif model_type == utils.ModelType.PAN:
         encoder_name = struct_dict_copy.get('encoder_name', '')
         is_dino = encoder_name.startswith('dinov2_') or encoder_name.startswith('dinov3_') or encoder_name.startswith('dinov1_')
@@ -827,6 +832,7 @@ def create_model_from_file_full_weights(
         map_location = "cpu"
     weights_fn = weights_fn.resolve()
     logging.info("Loading model dictionary from file.")
+
 
     model = create_model_on_device(device_num, model_struc_dict)
     model_dict = torch.load(weights_fn, map_location=map_location, weights_only=False)

@@ -139,4 +139,3 @@ use_sam: False
 adaptive_sam: True
 encoder_weights_path: False    #eg encoder_weights_path: "/somewhere/improved-resnet4.pt"
 full_weights_path: False
-

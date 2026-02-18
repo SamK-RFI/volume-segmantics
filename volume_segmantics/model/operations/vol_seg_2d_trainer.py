@@ -49,6 +49,13 @@ from volume_segmantics.model.operations.trainer_logging import TrainingLogger
 from volume_segmantics.model.operations.trainer_visualization import TrainingVisualizer
 
 
+from volume_segmantics.model.sam import SAM
+
+
+
+
+
+
 class VolSeg2dTrainer:
     """
     Class that provides methods to train a 2d deep learning model
@@ -624,6 +631,7 @@ class VolSeg2dTrainer:
                 self._load_encoder_weights(self.encoder_weights_path)
 
             early_stopping = self._create_early_stopping(output_path, patience)
+
         else:
             self.starting_lr /= self.lr_reduce_factor
             self.end_lr /= self.lr_reduce_factor
