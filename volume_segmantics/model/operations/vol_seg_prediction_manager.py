@@ -229,16 +229,28 @@ class VolSeg2DPredictionManager(BaseDataManager):
 
 
             if entropy is not None and self.settings.output_entropy:
-                utils.save_data_to_hdf5(
-                    entropy,
-                    f"{output_path.parent / output_path.stem}_entropy.h5",
-                    chunking=self.input_data_chunking,
-                )
-                utils.save_data_to_hdf5(
-                    votes,
-                    f"{output_path.parent / output_path.stem}_votes.h5",
-                    chunking=self.input_data_chunking,
-                )
+                if cfg.OUTPUT_FORMAT == "hdf":
+                    utils.save_data_to_hdf5(
+                        entropy,
+                        f"{output_path.parent / output_path.stem}_entropy.h5",
+                        chunking=self.input_data_chunking,
+                    )
+                    utils.save_data_to_hdf5(
+                        votes,
+                        f"{output_path.parent / output_path.stem}_votes.h5",
+                        chunking=self.input_data_chunking,
+                    )
+                else:
+                    utils.save_data_to_tif(
+                        entropy,
+                        f"{output_path.parent / output_path.stem}_entropy.tif",
+                        compress=True
+                    )
+                    utils.save_data_to_tif(
+                        votes,
+                        f"{output_path.parent / output_path.stem}_votes.tif",
+                        compress=True
+                    )
 
         return prediction
 
