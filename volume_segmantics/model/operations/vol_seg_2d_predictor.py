@@ -513,24 +513,6 @@ class VolSeg2dPredictor:
             self._merge_vols_in_mem(prob_container, label_container)
         return label_container[0], prob_container[0]
 
-    def _predict_Zonly_max_probs(self, data_vol):
-        shape_tup = data_vol.shape
-        logging.info("Creating empty data volumes in RAM to combine 12 way prediction.")
-        label_container = np.empty((2, *shape_tup), dtype=np.uint8)
-        prob_container = np.empty((2, *shape_tup), dtype=np.float16)
-        label_container[0], prob_container[0] = self._predict_single_axis(data_vol)
-        for k in range(1, 4):
-            logging.info(f"Rotating volume {k * 90} degrees")
-            data_vol = np.rot90(data_vol)
-            labels, probs = self._predict_single_axis(data_vol)
-            label_container[1] = np.rot90(labels, -k)
-            prob_container[1] = np.rot90(probs, -k)
-            logging.info(
-                f"Merging rot {k * 90} deg volume with rot {(k-1) * 90} deg volume."
-            )
-            self._merge_vols_in_mem(prob_container, label_container)
-        return label_container[0], prob_container[0]
-
     def _predict_single_axis_to_one_hot(self, data_vol, axis=Axis.Z):
         prediction, _, _ = self._predict_single_axis(data_vol, axis=axis)
         return utils.one_hot_encode_array(prediction, self.num_labels)
