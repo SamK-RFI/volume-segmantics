@@ -32,7 +32,7 @@ These setting directly influence the model training command of the VolSeg Toolki
 
 When adapting training or prediction settings, start by varying these first based on your segmentation outcomes. 
 
-#### 2d_model_predict_settings.yaml
+### Prediction Settings YAML
 
 The settings within this file have comments as to their use next to their specific component, however, for further clarification for some of the more prominent settings and their possible changes are outlined below *(Normalisation, Augmentation, and 2.5D settings should be kept the same as those used in the train_settings.yaml file)*;
 
