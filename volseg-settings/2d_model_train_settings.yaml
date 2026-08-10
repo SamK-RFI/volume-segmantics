@@ -99,7 +99,7 @@ full_weights_path: False
 
 
 # Augmentation settings
-augmentation_library: albumentations # Choose augmentation library: "albumentations" or "monai"
+augmentation_library: monai # Choose augmentation library: "albumentations" or "monai"
 use_monai_datasets: true # Use MONAI datasets when using MONAI augmentations (default: true when augmentation_library is monai)
  
 # 2.5D slicing settings
