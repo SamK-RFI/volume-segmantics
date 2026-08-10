@@ -36,12 +36,10 @@ When adapting training or prediction settings, start by varying these first base
 
 The settings within this file have comments as to their use next to their specific component, however, for further clarification for some of the more prominent settings and their possible changes are outlined below *(Normalisation, Augmentation, and 2.5D settings should be kept the same as those used in the train_settings.yaml file)*;
 
-> - **`quality`**; Degree of prediction-image analysis and prediction view (Medium is default, predicting using all 3 axis, however this can be lowered or improved based on the linked GPU capability or required output needs). 
+- **`quality`**; Degree of prediction-image analysis and prediction view (Medium is default, predicting using all 3 axis, however this can be lowered or improved based on the linked GPU capability or required output needs). "Low" quality refers to prediction of the volume segmentation by taking images along a single axis. "Medium" and "high" quality, predictions are done along 3 axes and/or in 12 directions (3 axes, 4 rotations) respectively, before being combined by maximum probability. ??
 
-low" quality refers to prediction of the volume segmentation by taking images along a single axis (images in the (x,y) plane). For "medium" and "high" quality, predictions are done along 3 axes and in 12 directions (3 axes, 4 rotations) respectively, before being combined by maximum probability. 
-
-> - **`output_probs`**; tbc
-> - **`output_entropy`**; tbc
+- **`output_probs`**; tbc
+- **`output_entropy`**; tbc
 
 > [!NOTE]
 >*Further information regarding settings specifics, component options and choice is summarised in the [Advanced Usage and Functionality Documentation.](TBC)*
