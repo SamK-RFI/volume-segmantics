@@ -31,7 +31,7 @@ After creating and loading your environment, you can look at the tutorial data. 
 The diagram below shows screenshot examples of the files availible for this tutorial. 
 
 <div align="center">
-  <img src="_static/Images/WINSdata_Example.png" width="100%">
+  <img src="(https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/images/WINSdata_Example.png)" width="100%">
 </div>
 
 
