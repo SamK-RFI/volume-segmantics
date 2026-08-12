@@ -88,15 +88,15 @@ The input data will be segmented using the input model following the settings sp
 
 ### Training features
 
-Volume Segmantics supports training using a variety of U-net encoder-decoder architectures and encoder choices, including transformer-based models such as DINO.  It allows purely axial or tri-planar/multi-axis prediction as well as supporting multiple decoder and multiple head architectures and multi-task training through a configurable `pipeline.yaml`.
+Volume Segmantics supports training using a variety of U-net encoder-decoder architectures and encoder choices, including transformer-based models such as DINO.  It allows purely axial or tri-planar/multi-axis prediction as well as supporting multiple decoder and multiple head architectures and multi-task training through a configurable `pipeline.yaml`. There are also a variety of loss functions available as per your user case specification and model architecture needs. 
 
-Volume Segmantics supports **2.5D slicing**, which creates multi-channel images from adjacent slices in the volume. This feature can be enabled by setting `use_2_5d_slicing: True` in the training settings file. This approach provides the model with spatial context from adjacent slices. The encoder adjusts to use the number of input channels specified by the num_slices parameter in training settings YAML (only when 2.5D slicing is enabled). When using 2.5D slicing for training, you must also enable 2.5D prediction for inference by setting `use_2_5d_prediction: True` in your prediction settings YAML file and set the same num_slices parameter there. 
+Volume Segmantics supports multiple augmentation libraries and **2.5D slicing**, which creates multi-channel images from adjacent slices in the volume which provides the model with spatial context from adjacent slices; this feature can be enabled by setting `use_2_5d_slicing: True` in the training settings file where the encoder adjusts to use the number of input channels specified by the *num_slices parameter* in training settings YAML (only when 2.5D slicing is enabled). 
 
-Further information reguarding the **specific utilities** and **additional or more advanced training and prediction options** can be found detailed in the [Functionality](https://github.com/rosalindfranklininstitute/volume-segmantics/tree/vs04b4/docs/Docs_Functionality) documentation.
+Other functions also include Multitask and Self-Supervised Learning options; further information regarding these **specific utilities** and **additional or more advanced training and prediction options** can be found detailed in the [Functionality](https://github.com/rosalindfranklininstitute/volume-segmantics/tree/vs04b4/docs/Docs_Functionality) documentation.
 
 ### Tutorial using example data
 
-A **tutorial** using the toolkits default settings, and contaiinng detailed instructions for initial environment setup and settings YAML configuration, is available [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/vs04b4/docs/VOlSeg_Tutorial.md); it provides a walk-through of how to segment blood vessels from synchrotron X-ray micro-CT data collected on a sample of human placental tissue.
+A **tutorial** using the toolkits default settings, and containing detailed instructions for initial environment setup and settings YAML configuration, is available [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/vs04b4/docs/VOlSeg_Tutorial.md); it provides a walk-through of how to segment blood vessels from synchrotron X-ray micro-CT data collected on a sample of human placental tissue.
 
 ## Contributing
 
