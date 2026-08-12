@@ -4,33 +4,31 @@ The following guide gives a comprehensive overview of the possible settings, par
 
 - Default Parameter Walkthrough.
 - Training and Prediction Settings File Breakdown and Fine-Tuning Guide.
-- Model Archetecture, Encoder and Loss Function lists.
+- Model Architecture, Encoder and Loss Function lists.
 
 ## Default Parameter Walkthrough
 
-After downlading the VolSeg Tookit, the training_settings.YAML and prediciton_setting.YAML will be set to their default variable inputs. If significant changes are made to them during the course of your work and you require a fresh start, default version of these settings can be copied from [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/main/volseg-settings).
+After downloading the VolSeg Toolkit, the training_settings.YAML and prediciton_setting.YAML will be set to their default variable inputs. If significant changes are made to them during the course of your work and you require a fresh start, default version of these settings can be copied from [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/main/volseg-settings).
 
-For first time users, it is reccomended to familierise yourselves with the most important inputs of each settings file as outlined in this sub-section, and how changing them in your initial tests might affect your model training and output success. From there, the fine-tuning section can then be used to further change inputs according to your user-case. 
+For first time users, it is recommended to familiarise yourselves with the most important inputs of each settings file as outlined in this sub-section, and how changing them in your initial tests might affect your model training and output success. From there, the fine-tuning section can then be used to further change inputs according to your user-case. 
 
 ### Training Settings YAML
 
 These setting directly influence the model training command of the VolSeg Toolkit. These are located in the `2d_model_predict_settings.yaml` file, where the individual inputs have comments as to their use next to their specific components; these are placed as reminders for their use and options. Further clarification for some of the more prominent and important settings and their possible changes are outlined below alongside their basic use (importance order);
 
-- **`model:type`**; The designated Model Archetecture (overall training pathway) for your training; a full list of the potential archetectures can be found listed further on in this documentation. Prominent models include "U_Net" (default and most well rounded; it is reccomended that you test using this archetecture first), "U_Net_Plus_plus", "FPN", "DeepLabV3", "DeepLabV3_Plus" etc. though some may be more suitible depending on your user case.
+- **`model:type`**; The designated Model Architecture (overall training pathway) for your training; a full list of the potential architectures can be found listed further on in this documentation. Prominent models include "U_Net" (default and most well rounded; it is reccomended that you test using this architecture first), "U_Net_Plus_plus", "FPN", "DeepLabV3", "DeepLabV3_Plus" etc. though some may be more suitable depending on your user case.
 
-- **`model:encoder_name`**; The designated Encoder used within your archetectures (feature reading and extraction); a full list of the potential encoders can be found listed further on in this documentation. The most tested and stable encoders include "tu-convnextv2_base", "tu_convnext_large", "resnet34" and "resnet50", though there has also been great success with the "efficientnet-b3", "timm-resnest50d"* and DINO (e.g. "dinov2_vitb14") encoders etc.
+- **`model:encoder_name`**; The designated Encoder used within your architectures (feature reading and extraction); a full list of the potential encoders can be found listed further on in this documentation. The most tested and stable encoders include "tu-convnextv2_base", "tu_convnext_large", "resnet34" and "resnet50", though there has also been great success with the "efficientnet-b3", "timm-resnest50d"* and DINO (e.g. "dinov2_vitb14") encoders etc.
 
-- **`image_size`**; The size of the data patches fed into the training command. This metric deals with how your data is stored and controlled, where variables must be a multiple of 32. The default input of *512*, and works great for image-label pairs between 250-700 cubic-voxels with efficient training times and moderate compute levels. If your compute capability is lower, or your data volumes are smaller, consider reducing this number (384 or 448). If you have a higher compute capability or your dataset is much larger, consider increasing this number (576 or 640); do take intoaccount that increaseing this variable will increase the training time and also have an impact on your predicttion time aswell. 
+- **`image_size`**; The size of the data patches fed into the training command. This metric deals with how your data is stored and controlled, where variables must be a multiple of 32. The default input of *512*, and works great for image-label pairs between 250-700 cubic-voxels with efficient training times and moderate compute levels. If your compute capability is lower, or your data volumes are smaller, consider reducing this number (384 or 448). If you have a higher compute capability or your dataset is much larger, consider increasing this number (576 or 640); do take into account that increasing this variable will increase the training time and also have an impact on your prediction time as well. 
 
-- **`num_cyc_frozen`**/**`num_cyc_unfrozen`**; The number of runs you designate your data to train on frozen and unfrozen parameters; combined equals the length of your training session. When frozen, the 'backbone' of the model is trained, creating a 'within-task pre-trained model' from specific parameters while others are frozen in place. When unfrozen, no parameters are halted and the pre-existing 'within-task pre-trained model' is then fine-tuned using all availible information based on the original. For further information regaurding this methodology, look for 'transfer-learning' subject matter. The higher the number of epochs, the more training time the model will incorporate to reach its peek validation and evaluation conditions; though be careful of *over-prediction impacts*. e.g. When looking at the *model_loss-Plot.png* of a very successful model, the 2 plot-lines should be reduce towards a straight line at the x axis, however if the graph starts to rise again; this will mean the model is over-training and you will receive a less accurate prediction as a result and this can be visible on predicition outputs as noise, and over segmented areas. **The number of unfrozen epochs should be 2/3 the size of the frozen epochs; the default is 8/5**.
+- **`num_cyc_frozen`**/**`num_cyc_unfrozen`**; The number of runs you designate your data to train on frozen and unfrozen parameters; combined equals the length of your training session. When frozen, the 'backbone' of the model is trained, creating a 'within-task pre-trained model' from specific parameters while others are frozen in place. When unfrozen, no parameters are halted and the pre-existing 'within-task pre-trained model' is then fine-tuned using all available information based on the original. For further information regaurding this methodology, look for 'transfer-learning' subject matter. The higher the number of epochs, the more training time the model will incorporate to reach its peek validation and evaluation conditions; though be careful of *over-prediction impacts*. e.g. When looking at the *model_loss-Plot.png* of a very successful model, the 2 plot-lines should be reduce towards a straight line at the x axis, however if the graph starts to rise again; this will mean the model is over-training and you will receive a less accurate prediction as a result and this can be visible on prediction outputs as noise, and over segmented areas. **The number of unfrozen epochs should be 2/3 the size of the frozen epochs; the default is 8/5**.
 
-- **`loss_criterion`**; The loss calculator helping to evaluate the training of noted features through classifications and inform and guide sucessful continued model progression; a full list of loss functions can be found further on in this documentation. Depending on your user case, this should be changes per your wanted segmentation outcomes and the image-label inputs you wish to train; "CombinedCEDiceLoss" is the most adaptable and stable for validation a wide range of images however great success has also bee seen using "BCELoss", "DiceLoss", "GeneralizedDiceLoss", etc.
+- **`loss_criterion`**; The loss calculator helping to evaluate the training of noted features through classifications and inform and guide successful continued model progression; a full list of loss functions can be found further on in this documentation. Depending on your user case, this should be changes per your wanted segmentation outcomes and the image-label inputs you wish to train; "CombinedCEDiceLoss" is the most adaptable and stable for validation a wide range of images however great success has also bee seen using "BCELoss", "DiceLoss", "GeneralizedDiceLoss", etc.
 
-- **`ce_weight`**/**`dice_weight`**; Weighting for CombinedCEDiceLoss Loss critrion evaluation; ratio of the cross-entropy component (ce), helping stabalise imbalance over the segmentable classes, and diceloss component (dice), calculating the overlap between the predicted outcomes and groundtruth. This ratio must add to 1.0 or the trainign will fail under this loss function. The variables should only be changes if the image-label pair inputs are particularly large, 1000+ cubic voxels, or the wanted features are numerous or complex in nature. The default is 0.2/0.8 split, however can be moved to more equal terms to suit the user case.
+- **`ce_weight`**/**`dice_weight`**; Weighting for CombinedCEDiceLoss Loss criterion evaluation; ratio of the cross-entropy component (ce), helping stabilise imbalance over the segmentable classes, and diceloss component (dice), calculating the overlap between the predicted outcomes and ground truth. This ratio must add to 1.0 or the training will fail under this loss function. The variables should only be changes if the image-label pair inputs are particularly large, 1000+ cubic voxels, or the wanted features are numerous or complex in nature. The default is 0.2/0.8 split, however can be moved to more equal terms to suit the user case.
 
-- **`eval_metric`**; Evaluation metric analysing errors in segmentation model; this should be kept as MeanIoU unless your user case requires specific amendations based on its complexity or size. 
-
-When adapting training or prediction settings, start by varying these first based on your segmentation outcomes. 
+- **`eval_metric`**; Evaluation metric analysing errors in segmentation model; this should be kept as MeanIoU unless your user case requires specific emendations based on its complexity or size. 
 
 ### Prediction Settings YAML
 
@@ -41,8 +39,7 @@ The settings within this file have comments as to their use next to their specif
 - **`output_probs`**; tbc
 - **`output_entropy`**; tbc
 
-> [!NOTE]
->*Further information regarding settings specifics, component options and choice is summarised in the [Advanced Usage and Functionality Documentation.](TBC)*
+> When adapting training or prediction settings, start by varying these first based on your segmentation outcomes. 
 
 ## Training and Prediction Settings File Breakdown and Fine-Tuning Guide
 ### File Breakdown
@@ -55,7 +52,7 @@ The training and prediction *.yaml* files are organised for easy navigation whil
 > - Reproducibility
 > - Model Architecture
 > - Learning rate 
-> - Finder
+>   - Finder
 >   - Differential
 >   - Scheduler
 > - Loss Function
@@ -70,15 +67,15 @@ The training and prediction *.yaml* files are organised for easy navigation whil
 > - 2.5D slicing
 > - Multi-task
 > - Semi-supervised (SS)
-> - Pseudo-labeling SS
+> - Pseudo-labelling SS
 
 The prediction file is comprised of either 'continuating' variables (ones that should be mirrored from the training settings per the model utilised in the prediction command) or prediction specific inputs, with the following sub-sections;
 
 > - Prediction Specifics
+> - Sliding Window
 > - Normalisation
 > - Augmentation
 > - 2.5D Prediction
-> - Sliding Window
 
 ## Fine-Tuning Guides
 
@@ -328,7 +325,7 @@ Commented out: `_in_channels`: Data layers for the model input tensor
 
 ~Finish after explaination/walkthrough given
 
-As newer versions of the toolkit are released, further settings may be added and as such this documentation guide will be updated.
+> As newer versions of the toolkit are released, further settings may be added and as such this documentation guide will be updated.
 
 ## Model Architectures, Encoder and Loss Function Lists; 
 
@@ -428,4 +425,3 @@ There are finally 9 Loss Functions that can be used when training these models: 
 
 - `ClassWeightedDiceLoss`
 > Handles different classes in model training by calculating the loss for each seperatly and then averageing it by the class frequency; this gives more credit to smaller classes and compensated for imbalence in multiclass data.
-
