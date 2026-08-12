@@ -78,7 +78,7 @@ pip install torch=='PyTorch_Version'  --index-url https://download.'full link'  
 pip install tensorboard
 ```
 
-## VolSeg Installation; Advanced version (Poetry)
+## VolSeg Installation; Advanced Alternative (Poetry)
 
 The packages needed to use Vol-Seg and manage releases, updates and amend software and package parameters, can also be installed alternativly through 'poetry'; a dependency and packaging tool. This installation method is suited towards developmental users or those who wish to interact with installations on a deeper level. 
 
@@ -105,6 +105,3 @@ cd /ceph/users/'Individual_User'/libs/volume-segmantics #Navigate into the clone
 pip install poetry #Install Poetry 
 poetry install  #Use Poetry to install VolSeg. 
 ```
-
-
-
