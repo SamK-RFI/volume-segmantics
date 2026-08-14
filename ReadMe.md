@@ -28,6 +28,8 @@ If you find a CUDA-enabled build of PyTorch is not being installed by pip (this 
 pip install volume-segmantics --extra-index-url https://download.pytorch.org/whl
 ```
 
+> Further information regarding VolSeg installation can be found in the [Installation Documentation](TBC)
+
 ### Docker/Apptainer Container (quay.io)
 A container image with the latest published release is available on the Rosalind Franklin's quay.io instance. You can pull and run this using Apptainer:
 
