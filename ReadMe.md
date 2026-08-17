@@ -55,11 +55,11 @@ After installation, two new commands will be available from your terminal whilst
 
 These commands require access to YAML files settings stored in the VolSeg install. These need to be located in a directory named `volseg-settings` within the directory where you are running the commands. The Default settings files can be copied from [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/main/volseg-settings) if changes to them are made and you need a fresh start. 
 
-> The file `2d_model_train_settings.yaml` can be edited in order to change training parameters such as image size, model architecture, learning rate, loss functions, evaluation metrics and also more advanced training settings. 
+- The file `2d_model_train_settings.yaml` can be edited in order to change training parameters such as image size, model architecture, learning rate, loss functions, evaluation metrics and also more advanced training settings. 
 
-> The file `2d_model_predict_settings.yaml` can be edited to change mirrored training parameters (that must remain consistent) and the prediction "quality" e.g "low", "medium" and "high" quality.
+- The file `2d_model_predict_settings.yaml` can be edited to change mirrored training parameters (that must remain consistent) and the prediction "quality" e.g "low", "medium" and "high" quality.
 
-Further information reguarding the **Default and more specific Settings** can be found detailed in the [Settings Guide](https://github.com/rosalindfranklininstitute/volume-segmantics/tree/vs04b4/docs/Docs_Settings-Guide) documentation. 
+> Further information reguarding the **Default and more specific Settings** can be found detailed in the [Settings Guide](https://github.com/rosalindfranklininstitute/volume-segmantics/tree/vs04b4/docs/Docs_Settings-Guide) documentation. 
 
 Check the normalisation settings carefully for your intended use; different datasets may require different choices from the default; double-check that the prediction normalisation settings match those used for training.
 
