@@ -17,9 +17,9 @@ To use this tutorial, you will need a virtual environment with `Volume-Segmantic
 
 > **Napari** is a well-known interactive image viewer and editor for biological data and segmentation, and is the default/recommended software for viewing images and label inputs while using VolSeg. Guidance surrounding the installation of [Napari](https://napari.org/stable/index.html) can be found [here](https://napari.org/stable/getting_started/installation.html); We recommend using version 0.5.5 or later for this tutorial. Once installed and opened, you will need to make sure you have the *napari builtins* plugin (dimensional viewer) installed alongside the *napari-h5* plugin (reader of .h5 files); 
 > - To install or update/check the exsistence of your current plugins, Go to Plugins> Install/Uninstall Plugins tab within in an Napari Window and open the plugin manager; your installed Napari plugins will be present in the upper 'installed plugins' section of the pop-up window. 
->>> - You will need to add both the *napari builtins* and *'napari-h5'* plugin to your installation by searching for the package in the top search bar of the pop-up window; plugin options relative to your search will appear in the lower section of the pop-up window and pressing the blue install button will install highlighted plugins. 
->>> - You will likley need to reload your Napari session after installing plugins to affect the plugin changes. 
->>> - Other useful plugins include *napari-animation* and *napari-chatgpt*; a list of additional plugins that may be of interest can be also found [here](https://napari-hub.org/).
+>> - You will need to add both the *napari builtins* and *'napari-h5'* plugin to your installation by searching for the package in the top search bar of the pop-up window; plugin options relative to your search will appear in the lower section of the pop-up window and pressing the blue install button will install highlighted plugins. 
+>> - You will likley need to reload your Napari session after installing plugins to affect the plugin changes. 
+>> - Other useful plugins include *napari-animation* and *napari-chatgpt*; a list of additional plugins that may be of interest can be also found [here](https://napari-hub.org/).
 > - Helpful guides for first time users can be found [here](https://napari.org/stable/howtos/index.html#how-tos).
 
 ## Step 1 - Viewing the image data;
