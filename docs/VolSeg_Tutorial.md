@@ -17,21 +17,21 @@ To use this tutorial, you will need a virtual environment with `Volume-Segmantic
 
 > **Napari** is a well-known interactive image viewer and editor for biological data and segmentation, and is the default/recommended software for viewing images and label inputs while using VolSeg. Guidance surrounding the installation of [Napari](https://napari.org/stable/index.html) can be found [here](https://napari.org/stable/getting_started/installation.html); We recommend using version 0.5.5 or later for this tutorial. Once installed and opened, you will need to make sure you have the *napari builtins* plugin (dimensional viewer) installed alongside the *napari-h5* plugin (reader of .h5 files); 
 > - To install or update/check the exsistence of your current plugins, Go to Plugins> Install/Uninstall Plugins tab within in an Napari Window and open the plugin manager; your installed Napari plugins will be present in the upper 'installed plugins' section of the pop-up window. 
->> - You will need to add both the *napari builtins* and *'napari-h5'* plugin to your installation by searching for the package in the top search bar of the pop-up window; plugin options relative to your search will appear in the lower section of the pop-up window and pressing the blue install button will install highlighted plugins. 
->> - You will likley need to reload your Napari session after installing plugins to affect the plugin changes. 
->> - Other useful plugins include *napari-animation* and *napari-chatgpt*; a list of additional plugins that may be of interest can be also found [here](https://napari-hub.org/).
+>>> - You will need to add both the *napari builtins* and *'napari-h5'* plugin to your installation by searching for the package in the top search bar of the pop-up window; plugin options relative to your search will appear in the lower section of the pop-up window and pressing the blue install button will install highlighted plugins. 
+>>> - You will likley need to reload your Napari session after installing plugins to affect the plugin changes. 
+>>> - Other useful plugins include *napari-animation* and *napari-chatgpt*; a list of additional plugins that may be of interest can be also found [here](https://napari-hub.org/).
 > - Helpful guides for first time users can be found [here](https://napari.org/stable/howtos/index.html#how-tos).
 
 ## Step 1 - Viewing the image data;
 
-After creating and loading your environment, you can look at the tutorial data. The dataset is a collection of files: a .tif image file containing a 700 cubic voxel 3D-slice of microCT scan data, and two .tif label files illustrating two biological components of the microCT scan data: the 'Villi' and 'Vessels'. *The original data is much larger (2000 cubic voxels), hence a section of tthe data has been taken for this tutorial.* The label-layer files are the best versions of the dataset currently available and are referred to as GroundTruth Images. These files can be found in the [Linked Tutorial Materials](). 
+After creating and loading your environment, you can look at the tutorial data. The dataset is a collection of files: a .tif image file containing a 700 cubic voxel 3D-slice of microCT scan data, and two .tif label files illustrating two biological components of the microCT scan data: the 'Villi' and 'Vessels'. *The original data is much larger (2000 cubic voxels), hence a section of tthe data has been taken for this tutorial.* The label-layer files are the best versions of the dataset currently available and are referred to as GroundTruth Images. These files can be found in the [Linked Tutorial Materials](https://github.com/SamK-RFI/volume-segmantics/tree/main/docs). 
 
 > For the purposes of the tutorial, we will be refering only to the 'Vessel' label file, however the 'Villi' data can also be used as test data in its place if you wish to conduct further attempts. 
 
 The diagram below shows screenshot examples of the files availible for this tutorial. 
 
 <div align="center">
-  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/images/WINSdata_Example.png" width="100%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/WINSdata_Example.png" width="100%">
 </div>
 
 
@@ -151,7 +151,7 @@ The command is split into 3 parts: The training programme, *model-train-2d*, the
 > 'directory_location_labels' = 'path_to_labels_ROI.tif'
 
 <div align="center">
-  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Training_script.png" width="80%">
+  <img src="_static/Images/Training_script.png" width="80%">
 </div>
 
 Before you run your training model, you should first observe and confirm your training settings; to do this, navigate to the *volseg-settings* folder within the volume-segmantics directory. The *.yaml files* within this directory specify the conditions your model will be trained under; they will be set to default, however a good practice is to make a written/visual note or copy of the files into your project space before it is run to keep track of the model's conditions. The most important setting inputs can be found below;
@@ -175,7 +175,7 @@ Before you run your training model, you should first observe and confirm your tr
 > - use_semi_supervised: False
 > - use_pseudo_labeling: False
 
-> More information surrounding further details for Volume-Segmantics training settings and documnetation as to their useage can be found [here]()
+> More information surrounding further details for Volume-Segmantics training settings and documnetation as to their useage can be found [here](https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/Docs_Settings-Guide.md)
 
 As the training is running, you will observe the image a label data being sliced seperatly, an outline of your settings and details of your training programe set to run, followed by a set of 8 frozen and 5 unfrozen training epochs. When the training has completed, the model will be saved to the volume-segmantics directory you are currently navigated to; the parent file, containing 4 files, should be cut and paste into a suitably named (with no spaces) directory in an easily accessible place (ideally alongside your ROI and original dataset). 
 
@@ -211,7 +211,7 @@ Before you run your prediction, you should first observe and confirm your predic
 > - use_2_5d_prediction: False (same as training settings),
 > - use_sliding_window: false 
 
-> More information surrounding the Volume-Segmantics prediction setting can be found [here]()
+> More information surrounding the Volume-Segmantics prediction setting can be found [here](https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/Docs_Settings-Guide.md)
 
 When the prediction has completed, the prediction file will be saved to the volume-segmantics folder you are currently navigated to; you should cut and paste this into the same space/directory as its corresponding model/data or in an easily accessible place. 
 *Models left in the VolSeg directory run the risk of being overwriten if multiple are run conconrrently without additional setup.*
@@ -230,7 +230,7 @@ Use the Layer list (labelled as **12** on the napari diagram/key) to toggle on a
 
 To produce a numerical representation of your model's effectiveness, you will use a manual DiceScore script to measure your predictions' labels relative to the original GroundTruth labels; it does this by calculating the space the 3D prediction labels occupies relatively. In order to calculate this, you are going to use a **Jupyter notebook** created specifically for the tutorial; DiceScore and other metrics are also mesured during the training and prediction process, however for comparing specific label files it is best to use this method.
 
-A curated Jupyter notebook ('Manual_DiceScore_MASTER.ipynb') for calculating this DiceScore using a GroundTruth and a prediction segmentation can be found in the [Linked Tutorial Materials](), and in order to use the notebook you must first copy the original file to your user space open a Jupyter session and open the file. 
+A curated Jupyter notebook ('Manual_DiceScore_MASTER.ipynb') for calculating this DiceScore using a GroundTruth and a prediction segmentation can be found in the [Linked Tutorial Materials](https://github.com/SamK-RFI/volume-segmantics/tree/main/docs), and in order to use the notebook you must first copy the original file to your user space open a Jupyter session and open the file. 
 
 To open a Jupyter session, you will need to use a new terminal and activate your created environment; this should be the same environment as that used to open your napari session. *You cannot use the same terminal as the one already open for running Napari, as using it for running additional code will kill the current Napari session*.
 

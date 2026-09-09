@@ -7,31 +7,31 @@ Volume Segmantics supports automated hyperparameter optimization using [Optuna](
 After installing Optuna alongside your VolSeg installation, a new command becomes available alongside `model-train-2d` and `model-predict-2d`:
 
 ```shell
-model-train-2d-optuna --data path_to_image_data --labels path_to_segmentation_labels. --optimization optuna_config.yaml
+model-train-2d --data path_to_image_data --labels path_to_segmentation_labels. --optuna optuna_config.yaml
 ```
 
 The argument points to the file `optuna_config.yaml`: a new YAML file defining which parameters to search over and how many trials to ru. When this command is run, it will search for the most ideal settings and models to use for your data including the parameters *leanring rate, model type* and *encoder name* and other settings; these can be changes in the `search space` as per your wanted choices. 
 
-A typical `optuna_config.yaml` looks like this:
+A minimal `optuna_config.yaml` looks like this:
 
 ```yaml
-study_name: "volseg_optimization" #
+study_name: "volseg_optimization" #Overall Session Name
 n_trials: 30 #
 seed: 42 #
 
 search_space:
-  starting_lr:
-    type: "loguniform" #
-    low: 1e-5 #
-    high: 1e-3 #
+  starting_lr: #Example input for search space; Learning Rate
+    type: "loguniform" 
+    low: 1e-5 #Starting Number
+    high: 1e-3 #Ending Number
 
-  model_type:
-    type: "categorical" #
-    choices: ["U_Net", "U_Net_Plus_plus", "FPN"] #
+  model_type: #Example input for search space; Model Type
+    type: "categorical"
+    choices: ["U_Net", "U_Net_Plus_plus", "FPN"] #Choices to cycle
 
-  encoder_name:
+  encoder_name: #Example input for search space; Model Encoder Name
     type: "categorical" #
-    choices: ["resnet34", "resnet50", "efficientnet-b3"] #
+    choices: ["resnet34", "resnet50", "efficientnet-b3"] #Choices to cycle
 
   ...
 ```
@@ -54,7 +54,7 @@ cp best_config_volseg_optimization.yaml volseg-settings/2d_model_train_settings.
 model-train-2d --data path_to_image_data --labels path_to_segmentation_labels.
 ```
 
-#### Example configuration
+### Example configuration
 
 An example search space, covering more of the available parameters, is provided in the installed [`optuna_config.yaml`](https://github.com/aadedolapo/volume-segmantics/tree/main/volseg-settings/optuna_config.yaml).
 

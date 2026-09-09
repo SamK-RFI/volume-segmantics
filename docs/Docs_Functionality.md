@@ -1,6 +1,6 @@
 # VolSeg Documentation; Functionality
 
-The following guides detail the full utilities and functions availible with the Volume-Sgmantics toolkit. This section should be used in conjunction with the [Settings-Guide](TBC), where modes can be swtiched using the variables listed in the Training and Prediction .YAML files. This document is split into # sections for easier navigation including;
+The following guides detail the full utilities and functions availible with the Volume-Sgmantics toolkit. This section should be used in conjunction with the [Settings-Guide](https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/Docs_Settings-Guide.md), where modes can be swtiched using the variables listed in the Training and Prediction .YAML files. This document is split into # sections for easier navigation including;
 
 - Default Usage
 - Training Command Split
@@ -20,7 +20,7 @@ When you have successfully installed Vol-Seg into its own environment, you will 
 > - Activate your VolSeg environment and Navigate to the VolSeg directory using the *'conda activate'* and *'cd'* commands.
   > - The *'model-train-2d'* and *'model-predict-2d'* commands can only be used once you have navigated to your Vol-Seg directory.
 
-> Please refer to the [ReadMe documentation]() regarding basic command use and outputs, and read the *Default Parameter Walkthrough* in the [Setting Guide]() before using the command line.
+> Please refer to the [ReadMe documentation](https://github.com/SamK-RFI/volume-segmantics/blob/main/ReadMe.md) regarding basic command use and outputs, and read the *Default Parameter Walkthrough* in the [Setting Guide](https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/Docs_Settings-Guide.md) before using the command line.
 
 ```shell
 conda activate "path_to_env"
@@ -30,6 +30,15 @@ model-train-2d --data 'directory_location_image' --labels 'directory_location_la
 
 model-predict-2d 'directory_location_segmantics_training__model' 'directory_location_new_image'
 ```
+
+Training can also be performed on multiple ROIs. several image-label pairs can be used it he training command though the image and the labels must be seperated to corespond to their relivent dataloader. the images and labels must be input into the execution code in chronological order to keep the pairs together when training; failing to do this will result in a mismatch in image and label feature recognitio and your resultant model will fail. An example format for multiple ROi training can be found below;
+
+A model trained on multiple ROI pairs can be used to predict onto any larger image as per the normal utility without any additional inputs. 
+
+```shell
+model-train-2d --data 'image_1_path.tiff' 'image-2_path.tiff' --labels 'label_1_path.tiff' 'label_2_path.tiff' 
+```
+> - Image_1 and label_1 are the first image-label pair, and image_2 and label_2 are the second. Each image and label must specify the full file path. 
 
 ## Split-Command Execution Shortcuts
 
@@ -48,7 +57,10 @@ Running the *'slicer'* argument will create 2 folders within your working volume
 *Be aware that if there are no such directories with these names within your Vol-Seg directory, the training argument will produce an error when executed.* The data and seg folders produced by the 'slicer' argument are **overwritten** if a full training (slicing and training through the basic command) is executed.
 
 ## Epoch and Learning rate; Adapting Training Parameters per case
+### Epochs
+TBC
 
+### Learning Rate
 TBC
 
 ## Advanced Functions; Training and Prediction Utilities and Settings setup
@@ -59,36 +71,39 @@ The following section explains the more advanced capabilities and functionalitie
 
 When you train a model, the trainer looks for comparable differences between what *is* (label-layer) and *is not* selected (background) from your data; it specifically looks for what is different. Augmentation is used to modify the data to expose this difference (contrast, blur, rotation, mirroring etc.) more clearly without changing the data itself. The VolSeg package has the capability to use 2 Augmentation libraries; **Albumentations** (widely used in industry and open-source projects) and **MONAI** (healthcare-imaging-specific framework for multi-dimensional image preprocessing). 
 
-> *Further information regarding [Albumentations](https://albumentations.ai/) and [MONAI](https://project-monai.github.io/index.html) can be found at the following links. 
+> - Further information regarding [Albumentations](https://albumentations.ai/) and [MONAI](https://project-monai.github.io/index.html) can be found at the following links. 
 
-Both packages work very well and have produced great outcomes on past and current projects. Users of VolSeg can select either library though may find that depending on their input images that one set of augmentations works better than the other. To switch between these libraries, use the `2d_model_train_settings.yaml` to assign your preference prior to execution using the *'augmentation_library'* argument; further information can be found in the [setting-guide documentation]().
+Both packages work very well and have produced great outcomes on past and current projects. Users of VolSeg can select either library though may find that depending on their input images that one set of augmentations works better than the other. To switch between these libraries, use the `2d_model_train_settings.yaml` to assign your preference prior to execution using the *'augmentation_library'* argument; further information can be found in the [setting-guide documentation](https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/Docs_Settings-Guide.md).
 
 ### 2.5D Training and Predicting
 
-~2.5D explanation~ include 3/5/7/9 choice explanation; AVERY???
+~~ 2.5D explanation~ include 3/5/7/9 choice explanation; TBC
 
 Implementing 2.5D can have a greater effect on larger datasets, those with more inner-label image complexity (where the image labels highlight a high variability in image detail (more differences for the trainer to measure)), wider image contrast threshold, or with datasets that contain a lower number of sub-layers (1-3 label layers). Datasets with instability in overall image contrast or a larger number of label sub-layers can often produce good segmentations with this method though it may also produce instances of hashing artefacts, inconsistencies in boundary identification across sub-layers and under/over segmented regions where the in-label area is possibly too complex. It is apparent that using ROI predictions from the 2.5D method, alongside those produced from non-2.5D Vol-Seg training, towards larger-image models can improve overall segmentation quality when following the recommended iterative segmentation workflow. 
 
-To enable this feature, change the *'use_2_5d_slicing'* input to **True** in the `2d_model_train_settings.yaml`, and then assign the `num_slices` to your preferred setting; the higher the number, the more data is chosen when the middle slice is selected. When choosing this number, also make sure you use the correct *'slice_file_format'* as per the directions in the [setting-guide documentation](). **It is very important to make sure you use the same settings in the `2d_model_predict_settings.yaml` as the `2d_model_train_settings.yaml`; training models using `use_2_5d_slicing: True` requires the same argument when predicting using that model outcome.** *A model that incorporates data a from 2.5D prediction, but does not use 2.5D when training the next model does not require a true argument when predicting.*
+To enable this feature, change the *'use_2_5d_slicing'* input to **True** in the `2d_model_train_settings.yaml`, and then assign the `num_slices` to your preferred setting; the higher the number, the more data is chosen when the middle slice is selected. When choosing this number, also make sure you use the correct *'slice_file_format'* as per the directions in the [setting-guide documentation](https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/Docs_Settings-Guide.md). 
+
+**It is very important to make sure you use the same settings in the `2d_model_predict_settings.yaml` as the `2d_model_train_settings.yaml`; training models using `use_2_5d_slicing: True` requires the same argument when predicting using that model outcome.** *A model that incorporates data a from 2.5D prediction, but does not use 2.5D when training the next model does not require a true argument when predicting.*
 
 ### Multi-task Training 
-~TBC
 
-~Multi-task explanation~ MONAI only? ; AVERY???
+~ **Still being tested; instructions on functionality in proccess of being writen up.** 
+
+~~ Multi-task explanation~ MONAI only; TBC
 
 The multi-task utility allows additional data to be considered and processed during model *training* using multiple tasks on label data (decoder); segmentation using this method uses **3+** components/processing tasks; your standard *image* and *label layers*, alongside additional training data. Currently, this functionality includes a label *'boundary map'*, though there is also the capability of adding additional tasks in future updates or through developmental work. This boundary map is created from your original label data, following the edge of your label concisely; his label should be as complete as possible with respect to the original image as incomplete labels can lead to poor segmentation outcomes using this method. *The boundary map will output as a .tif file; to train a model using this map, the image and label files must also be .tif files*. To generate a boundary map, use the instructions bellow;
 
 #### - Boundary map Creation;
 
-To create a boundary map of your data, use the <ins>'*CalculateBoundaryMap.py*'</ins> script. This script can be found in the 'Jupyter_notebooks' folder linked to this documentation in the GitHub Repo [here](TBC); it should be copied and saved to your Vol-Seg directory or to an easily accessible folder in your user space. 
+To create a boundary map of your data, use the <ins>'*CalculateBoundaryMap.py*'</ins> script. This script can be found in the ## folder in the docs directory [here](https://github.com/SamK-RFI/volume-segmantics/tree/main/docs); it can be copied and saved to your VolSeg directory or to an easily accessible folder in your user space. 
 
-Open your Vol-Seg environment, navigate to your Vol-Seg Directory (or where the <ins>CalculateBoundaryMap</ins> script is saved to) and use the following command to formulate and execute the code and create your file; this map then can be opened and viewed in Napari. 
+Open your Vol-Seg environment, navigate to your Vol-Seg Directory (or where the <ins>CalculateBoundaryMap</ins> script is saved to) and use the following command to formulate and execute the script and create your file; this map then can be opened and viewed in Napari. 
 
->1 - Activate your Vol-Seg environment and Navigate to the Vol-Seg directory using the *'conda activate'* and *'cd'* commands; `conda activate "path_to_env/env_name"` and `cd /users/'Individual_User'/libs/volume-segmantics` (or alternative location)
+>1 - Activate your VolSeg environment and Navigate to the Vol-Seg directory using the *'conda activate'* and *'cd'* commands; `conda activate "path_to_env/env_name"` and `cd /users/'Individual_User'/libs/volume-segmantics` (or alternative location)
 > - Make sure the <ins>*'CalculateBoundaryMap.py'*</ins> script is present in the folder you have navigated to, and that you have opened the file (VisualStudioCode or equivalent file viewer) to check its contents.
-> Using this script may also require the additional installation of additional packages not installed when installing Vol-Seg; if this occurs, the package requirements will appear as error messages and *pip* can be used to install them to the Vol-Seg environment; the requirements can be found in the first part of the script.
+> Using this script may also require the additional installation of additional packages not installed when installing VolSeg; if this occurs, the package requirements will appear as error messages and *pip* can be used to install them to the VolSeg environment; the requirements can be found in the first part of the script.
 >
->2 - Use the command arguments *`'--thickness'`* and *`'--min_component_size'`* to designate the *Boundary thickness* and the *solitary Component Size (within the boundary perimeter) you wish to remove from your map surrounding the label boundary(smaller than the integer allocated)*; they should be used after the execution of the *python command* running the script; the full command should have the format; `python CalculateBoundaryMap.py "Path_to_Image_File" --thickness 'Integer' --min_component_size 'Integer'`
+>2 - The full command should have the format; `python CalculateBoundaryMap.py "Path_to_Image_File" --thickness 'Integer' --min_component_size 'Integer'`. Use the command arguments *`'--thickness'`* and *`'--min_component_size'`* to designate the *Boundary thickness* and the *solitary Component Size (within the boundary perimeter) you wish to remove from your map surrounding the label boundary(smaller than the integer allocated)*; they should be used after the execution of the *python command* running the script; 
 > - `"Path_to_Image_File"` should be the full path to the label files location.
 > If command arguments are not used, defaults for *`'--thickness'`* and *`'--min_component_size'`* will be used ('3' and '0' respectively); this is a good place to start if you are unsure about the initial integer inputs and what the boundary map produces. 
 
@@ -109,33 +124,32 @@ To run the Multitask training, use the same format for running a simple training
 model-train-2d --data 'Path_to_Image_File' --labels 'Path_to_Label_File' --task2 'Path_to_BoundaryMap_File'
 ```
 
-It is also possible to run a Multitask training model on multiple ROIs; you must the same number of boundary maps as image-labels pairs within the training execution command. List the image, label and boundary map files in the same order per argument, mirroring the same format as explained in the multiple image-label pair training instructions in the [ReadMe Documentation](TBC).
+*MONAI augmentations* should be selected when using Multitask training, making use of its libraries specifically designed to incorporate boundary maps alongside label data. Adding the boundary maps to your data (adding the extra task) will also not only increase the 'slicing' time required when running the model, but also may require a longer epoch number to allow for better training conditions depending on the number of label sub-layers connected to your image (more complex boundary map used during the multitask training). 
 
-> An example command can be found below, where image_1, label_1 and BM_1 are one image-label-BM set, and image_2, label_2 and BM_2 are a second image-label-BM set.
+It is also possible to run a Multitask training model on multiple ROIs; you must the same number of boundary maps as image-labels pairs within the training execution command. List the image, label and boundary map files in the same order per argument, mirroring the same format as explained in the default usage training instructions.
 
 ```shell
-model-train-2d --data image_1_path.h5 image-2_path.tiff --labels label_1_path.h5 label_2_path.tiff --task2 boundarymap_1_path.tif boundarymap_1_path.tif
+model-train-2d --data 'image_1_path.tiff' 'image-2_path.tiff' --labels 'label_1_path.tiff' 'label_2_path.tiff' --task2 'boundarymap_1_path.tif' 'boundarymap_1_path.tif'
 ```
+> - image_1, label_1 and BM_1 are one image-label-BM set, and image_2, label_2 and BM_2 are a second image-label-BM set.
 
-Implementing Multitask training can have a greater affect on medium-sized datasets, those with complex boundaries or with datasets that contain a higher number of sub-layers; large datasets or those that require more ROIs may need larger computing capabilities. Depending on the number of sub-layers (large quantity) and the quality of both the boundary map, respective to the original segmentation, the outcome predictions may sometimes vary; changing the `loss_weights` in the *'Multi-task Learning settings'* can positively affect these outcomes depending on the issues that arise where favouring the boundary or segmentation data to suit can be experimented with. It is apparent that using this method on larger image iterations (rather than initial ROIS), where the ground truth is more evolved or complete, or where the segmentation boundaries take precedence in your data quality, can prove more effective and increase the final prediction quality when following the recommended iterative segmentation workflow. 
+Implementing Multitask training can have a greater affect on medium-sized datasets, those with complex boundaries or with datasets that contain a higher number of sub-layers; large datasets or those that require more ROIs may need larger computing capabilities. Depending on the number of sub-layers (large quantity) and the quality of both the boundary map, respective to the original segmentation, the outcome predictions may sometimes vary; changing the `loss_weights` in the *'Multi-task Learning settings'* can positively affect these outcomes depending on the issues that arise where favouring the boundary or segmentation data to suit can be experimented with. 
+
+It is apparent that using this method on larger image iterations (rather than initial ROIS), where the ground truth is more evolved or complete, or where the segmentation boundaries take precedence in your data quality, can prove more effective and increase the final prediction quality when following the recommended iterative segmentation workflow. 
 
 To enable this feature, change the `use_multitask` query to **True**, and then make sure the `num_tasks` reflects the number of tasks you will be using during the training setting; '2' will be image and label as default with the addition of an extra task ('2') for the boundary map.
 
-`decoder_sharing` ??
-
-`seg_loss_weight` ??
-`boundary_loss_weight` ??
-`task3_loss_weight` ??
-
-`boundary_loss_type` ??
-
-
-... *MONAI augmentations* should be selected when using Multitask training, making use of its libraries specifically designed to incorporate boundary maps alongside label data. Adding the boundary maps to your data (adding the extra task) will also not only increase the 'slicing' time required when running the model, but also may require a longer epoch number to allow for better training conditions depending on the number of label sub-layers connected to your image (more complex boundary map used during the multitask training). 
+- `decoder_sharing`; TBC
+- `seg_loss_weight`; TBC
+- `boundary_loss_weight`; TBC
+- `task3_loss_weight`; TBC
+- `boundary_loss_type`; TBC
 
 ### Self-Supervised Training
-~TBC
 
-~Self-Supervised Training explanation~ 2 integrations?? ; AVERY???
+~ **Still being tested; instructions on functionality in proccess of being writen up.**
+
+~~ Self-Supervised Training explanation~ 2 integrations?? TBC
 
 The Self-Supervision utility allows additional data to be considered during model *learning* using further unrelated image data (encoder); Segmentation using this method uses additional unlabelled image data to provide further support when looking for differences during label-image data comparison. *The unlabelled data should not be the same as that included in the main image inputs when training a model using this function; the unlabelled data should be from the same or a comparable scan but not from the same ROI.* This data must also be generated prior to the training models execution; to generate unlabelled data, use the instructions bellow:
 
@@ -155,19 +169,19 @@ Once generated, it may be used for either/both *Mean Teacher* and *Pseudo-label*
 
 #### - Self-Supervised training;
 
-*Mean Teacher* and *Pseudo-label* training settings are used to create self-supervised training models, allocating your unlabelled data to the argument `--unlabeled_data_dir` within the training execution and producing potentially better predictions depending on your input image and label quality and overall segmentation aims. Specific settings for the *Mean Teacher* and *Pseudo-label* settings can be found in the subsequent sub-section. 
-
-> - An example command can be found below, where the usual command for model training can be used; with the additional allocation of unlabelled data. 
+*Mean Teacher* and *Pseudo-label* training settings are used to create self-supervised training models, allocating your unlabelled data to the argument `--unlabeled_data_dir` within the training execution and producing potentially better predictions depending on your input image and label quality and overall segmentation aims. The following command can be used to asign your unlabelled data to both functions of the self-supervised training;
 
 ```shell
 model-train-2d --data 'Path_to_Image_File' --labels 'Path_to_Label_File' --unlabeled_data_dir='Path_to_Unlabeled_Data_dir'
 ```
 
-#### - Mean Teacher
+Specific settings for the *Mean Teacher* and *Pseudo-label* settings can be found in the subsequent sub-section. 
 
-~Mean teacher explanation~ ; AVERY for background and checks +++++
+#### - Mean Teacher; Settings and Outcome
 
-#### - Pseudo-label
+~Mean teacher explanation~ ; TBC
 
-~Pseudo-label~ ; AVERY for background and checks +++++
+#### - Pseudo-label; Settings and Outcome
+
+~Pseudo-label~ ; TBC
 
