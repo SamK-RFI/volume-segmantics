@@ -31,7 +31,7 @@ After creating and loading your environment, you can look at the tutorial data. 
 The diagram below shows screenshot examples of the files availible for this tutorial. 
 
 <div align="center">
-  <img src="(https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/images/WINSdata_Example.png)" width="100%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/images/WINSdata_Example.png" width="100%">
 </div>
 
 
@@ -46,7 +46,7 @@ To view the data in Napari for yourselves, the Napari application needs to be op
 You can use the Napari window and the diagram/key below to view the data in both 2D and 3D; inspect the data for quality, anomalies/inconsistencies, contrast variability, scan artefacts etc.
 
 <div align="center">
-  <img src="_static/Images/Napari_Ex.png" width="100%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Napari_Ex.png" width="100%">
 </div>
 
 > - **(1)** Shuffle label colours **(2)** Erase tool **(3)** Paint tool **(4)** Bucket tool **(5)** Pan tool **(6)** Opacity bar **(7)** Label Selector **(8)** Tool applicator-size bar **(9)** Tool definition selector (2D or 3D) **(10)** New layer buttons (Points, Labels, Image) **(11)** Delete layer **(12)** Layer List, and Level selector **(13)** Command line **(14)** View shifter (2D/3D modes) **(15)** Change axis view (X, Y, Z) **(16)** Rotate plane (2D) **(17)** Navigator; Filename, Cursor place (3D), Current Axis view **(18)** Animate data and current data view (0-Z axis. 1-Y axis, 2-X axis) **(19)** Slice scroll bar **(20)** Slice viewer (current slice/overall slice total).
@@ -80,7 +80,7 @@ The recommended approach for notating your chosen ROI uses the following steps;
 >  **Note**; when forming the 6-point co-ordinate reference, the numbers should form 3 pairs, the difference in each pair will be the range of the length, width and breadth of your volume, and should match any previous ideas of set size. The size of the crop will be checked numerically (the '.shape' command) within the cropping short-script in the next step. 
 
 <div align="center">
-  <img src="_static/Images/Napari_ROI.png" width="100%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Napari_ROI.png" width="100%">
 </div>
 
 ## Step 3 - Cropping your Data;
@@ -151,7 +151,7 @@ The command is split into 3 parts: The training programme, *model-train-2d*, the
 > 'directory_location_labels' = 'path_to_labels_ROI.tif'
 
 <div align="center">
-  <img src="_static/Images/Training_script.png" width="80%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Training_script.png" width="80%">
 </div>
 
 Before you run your training model, you should first observe and confirm your training settings; to do this, navigate to the *volseg-settings* folder within the volume-segmantics directory. The *.yaml files* within this directory specify the conditions your model will be trained under; they will be set to default, however a good practice is to make a written/visual note or copy of the files into your project space before it is run to keep track of the model's conditions. The most important setting inputs can be found below;
@@ -197,7 +197,7 @@ These paths must specify the exact files ending in your saved .pytorch and .tif 
 > 'directory_location_new_image' = 'path_to_image-700CUBE.tif'
 
 <div align="center">
-  <img src="_static/Images/Prediction_script.png" width=80%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Prediction_script.png" width=80%">
 </div>
 
 Before you run your prediction, you should first observe and confirm your prediction settings; to do this, again navigate to the volseg-settings folder within the volume-segmantics directory. The *.yaml files* conditions will again be set to default however, a good practice is to make a note of or copy the file into the same area as your copied training settings before it is run to keep track of the model output conditions. The most important setting inputs can be found below;
@@ -225,7 +225,7 @@ After opening the prediction file in Napari and when attempting to view your dat
 Use the Layer list (labelled as **12** on the napari diagram/key) to toggle on and off your viewed layers, their opacity and arrangement to view your prediction layer with respect to the original 700cube GroundTruth; this will allow you to visually compare the prediction and its features with the original segmentation. 
 
 <div align="center">
-  <img src="_static/Images/Prediction_Accuracy.png" width="100%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Prediction_Accuracy.png" width="100%">
 </div>
 
 To produce a numerical representation of your model's effectiveness, you will use a manual DiceScore script to measure your predictions' labels relative to the original GroundTruth labels; it does this by calculating the space the 3D prediction labels occupies relatively. In order to calculate this, you are going to use a **Jupyter notebook** created specifically for the tutorial; DiceScore and other metrics are also mesured during the training and prediction process, however for comparing specific label files it is best to use this method.
@@ -241,7 +241,7 @@ To open a Jupyter session, you will need to use a new terminal and activate your
 >>> - Double-clicking the file will then open it in the main window alongside the lauch menu. Once opened, the notebook can then be interacted with and run. 
 
 <div align="center">
-  <img src="_static/Images/Jupyter.png" width="100%">
+  <img src="https://github.com/SamK-RFI/volume-segmantics/blob/main/docs/source/_static/Images/Jupyter.png" width="100%">
 </div>
 
 > - **(1)** Run; run selected cells/run all cells, **(2)** Kernel; interrupt/Reconnect/Restart Kernel session, **(3)** File-Navigator, **(4)** Table of Contents, **(5)** Viewer panel, **(6)** Notebook tab, **(7)** Executable cell (code), **(8)** Note cell (markdown).
