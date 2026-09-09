@@ -76,7 +76,7 @@ Paths to multiple Image-Label Pairs can also be added after the `--data` and `--
 - 1] **.pytorch** model file; the segmentation model created by the train command that can be used to predict on other images,
 - 2] **model_loss-Plot.png**; a graph showing the training and validation loss over the course of the training epochs (a *graphical* representation of the model's success),
 - 3] **model_prediction_image.png**; showing specific slices of the image and labels used within the model, and the resultant prediction test outcomes for that slice (a *visual* representation model's success),
-- and 4] **stats.csv**; a record of the training loss, validation loss and evaluation score per epoch (comparable to a DiceScore (1.0 equals 100% accuracy); accuracy of the test prediction generated versus the original label).
+- and 4] **stats.csv**; a record of the training loss, validation loss and evaluation score per epoch (comparable to a DiceScore (1.0 equals 100% accuracy); accuracy of the test prediction generated versus the original label)(a numerical representation model's success).
 
 ### For 3D segmentation prediction using a 2D model
 
