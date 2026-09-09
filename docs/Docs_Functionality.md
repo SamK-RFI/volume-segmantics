@@ -58,10 +58,10 @@ Running the *'slicer'* argument will create 2 folders within your working volume
 
 ## Epoch and Learning rate; Adapting Training Parameters per case
 ### Epochs
-TBC
+TBC - being summerised
 
 ### Learning Rate
-TBC
+TBC - being summerised
 
 ## Advanced Functions; Training and Prediction Utilities and Settings setup
 
