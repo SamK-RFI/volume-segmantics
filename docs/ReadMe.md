@@ -10,7 +10,8 @@ This work utilises the abilities afforded by the excellent [segmentation-models-
 
 ## Requirements
 
-A machine capable of running CUDA enabled with a recent version of Pytorch (2.5 or greater is recommended); this generally means a reasonably modern NVIDIA GPU. The exact requirements differ according to operating system. For example, on Windows you will need Visual Studio Build Tools as well as CUDA Toolkit installed; see [the CUDA docs](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html) for more details. 
+Volume-segmantics requires a machine capable of running CUDA enabled with a recent version of Pytorch (2.5 or greater is recommended); this generally means a reasonably modern NVIDIA GPU.
+It may be installed directly from PyPI, in which case the exact requirements differ according to operating system (or example, on Windows you will need Visual Studio Build Tools as well as CUDA Toolkit installed; see [the CUDA docs](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html)). Alternative, a container image is provided which may be run using an OCI compatible runtime (e.g., docker, podman, apptainer). 
 
 ## Installation
 
