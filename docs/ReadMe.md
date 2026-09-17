@@ -99,7 +99,7 @@ Further information reguarding the **specific utilities** and **additional or mo
 
 ### Tutorial using example data
 
-A **tutorial** using the toolkits default settings, and contaiinng detailed instructions for initial environment setup and settings YAML configuration, is available [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/vs04b4/docs/VOlSeg_Tutorial.md); it provides a walk-through of how to segment blood vessels from synchrotron X-ray micro-CT data collected on a sample of human placental tissue.
+A **tutorial** using the toolkits default settings, and containing detailed instructions for initial environment setup and settings YAML configuration, is available [here](https://github.com/rosalindfranklininstitute/volume-segmantics/blob/vs04b4/docs/VOlSeg_Tutorial.md); it provides a walk-through of how to segment blood vessels from synchrotron X-ray micro-CT data collected on a sample of human placental tissue.
 
 ## Contributing
 
