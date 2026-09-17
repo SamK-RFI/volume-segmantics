@@ -1,6 +1,8 @@
 # Volume Segmantics
 
-[![DOI](https://joss.theoj.org/papers/10.21105/joss.04691/status.svg)](https://doi.org/10.21105/joss.04691) ![example workflow](https://github.com/DiamondLightSource/volume-segmantics/actions/workflows/tests.yml/badge.svg) ![example workflow](https://github.com/DiamondLightSource/volume-segmantics/actions/workflows/release.yml/badge.svg)
+[![DOI](https://joss.theoj.org/papers/10.21105/joss.04691/status.svg)](https://doi.org/10.21105/joss.04691) 
+[![Tests](https://github.com/rosalindfranklininstitute/volume-segmantics/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/rosalindfranklininstitute/volume-segmantics/actions/workflows/tests.yml)
+[![Release](https://github.com/rosalindfranklininstitute/volume-segmantics/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/rosalindfranklininstitute/volume-segmantics/actions/workflows/release.yml)
 
 Volume Segmantics is a PyTorch Deep-learning Segmentation Toolkit providing a simple command-line interface and API that allows researchers to quickly train a variety of 2D PyTorch segmentation models (e.g.  U-Net, U-Net++, FPN, DeepLabV3+) on their 3D datasets. These models use pre-trained encoders, enabling fast training solutions on a range of biological datasets where it has been optimised for minimal data input; a single dataset in between 128 and 512 cubic pixels, is able to produce efficient and accurate predictions on much larger comparable images. Great success has been seen even using small computing power, however with increased capability, and using the toolkits advanced functionality, larger and more complex datasets can now be processed with a reduced timeframe.
 
