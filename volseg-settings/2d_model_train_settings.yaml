@@ -34,7 +34,7 @@ model:
   type: "U_Net"
   ## For more details on encoder types please see smp.readthedocs.io
   # Choose encoder, those tested so far include the following:
-  # ["resnet34", "resnet50", "tu-convnextv2_base", "tu-convnextv2_large", "tu_convnext_base", "tu_convnext_large"
+  # ["resnet34", "resnet50", "tu-convnextv2_base", "tu-convnextv2_large", "tu-convnext_base", "tu-convnext_large"
   # "resnext50_32x4d", "efficientnet-b3","efficientnet-b4", "efficientnet-b5", "efficientnet-b7"
   # "timm-resnest50d"*, "timm-resnest101e"*, *Encoders with asterisk not compatible with PAN.
   # "dinov2_vits14", "dinov2_vitb14", "dinov2_vitl14", "dinov2_vitg14",
